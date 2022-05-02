@@ -5,6 +5,7 @@ version = "0.1.0"
 
 [deps]
 DataInterpolations = "82cc6244-b520-54b8-b5a6-8a565e85f1d0"
+Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 NaNStatistics = "b946abbf-3ea7-4610-9019-9858bfdeaf2d"
 Peaks = "18e31ff7-3703-566c-8e60-38913d67486b"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
