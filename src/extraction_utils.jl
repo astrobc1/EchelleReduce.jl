@@ -2,7 +2,6 @@
 using EchelleBase
 
 using SciPy
-using Infiltrator
 using NaNStatistics
 
 function estimate_snr(trace_image)
@@ -14,10 +13,6 @@ function estimate_snr(trace_image)
     res_norm = spec1d .- spec1d_smooth
     snr = 1 / nanstd(res_norm)
     return snr
-end
-
-function parallel_setup()
-    include((@__DIR__) * Base.Filesystem.path_separator * "parallel_setup.jl")
 end
 
 function refine_initial_trace_window(image, badpix_mask, sregion, trace_params; n_iterations=3)
@@ -81,8 +76,7 @@ function compute_trace_positions_centroids(trace_image, trace_mask, sregion, tra
     ny, nx = size(trace_image)
     
     # Helpful arrays
-    yarr = [1:ny;]
-    xarr = [1:nx;]
+    yarr = 1:ny
 
     if isnothing(trace_pos_deg)
         trace_pos_deg = degree(trace_positions)
@@ -96,18 +90,14 @@ function compute_trace_positions_centroids(trace_image, trace_mask, sregion, tra
     med_val = maths.weighted_median(spec1d, p=0.98)
     spec1d ./= med_val
 
-    # Current ypos
-    ypos = trace_positions.(xarr)
-
     # Y centroids
     ycen = fill(NaN, nx)
 
     # Loop over columns
     for x=sregion.pixmin:sregion.pixmax
-        
-        # See if column is even worth looking at
+        ymid = trace_positions(x)
         if !isnothing(aperture)
-            use = @views findall((trace_mask[:, x] .== 1) .&& isfinite.(trace_image[:, x]) .&& (yarr .>= ypos[x] + aperture[1]) .&& (yarr .<= ypos[x] + aperture[2]))
+            use = @views findall((trace_mask[:, x] .== 1) .&& isfinite.(trace_image[:, x]) .&& (yarr .>= ymid + aperture[1]) .&& (yarr .<= ymid + aperture[2]))
         else
             use = @views findall((trace_mask[:, x] .== 1) .&& isfinite.(trace_image[:, x]))
         end
@@ -126,7 +116,8 @@ function compute_trace_positions_centroids(trace_image, trace_mask, sregion, tra
 
     # Fit
     good = findall(isfinite.(ycen))
-    trace_positions = @views Polynomials.fit((xarr[good]), (ycen[good]), trace_pos_deg)
+    xarr = [1:nx;]
+    trace_positions = @views Polynomials.fit(xarr[good], ycen[good], trace_pos_deg)
 
     # Return
     return trace_positions
@@ -136,10 +127,10 @@ end
 function compute_background_1d(trace_image, trace_mask, trace_positions, extract_aperture; smooth_width=nothing)
     ny, nx = size(trace_image)
     xarr = [1:nx;]
-    yarr = [1:ny;]
+    yarr = 1:ny
     background = fill(NaN, nx)
     for x=1:nx
-        ymid = trace_positions(x) + 1
+        ymid = trace_positions(x)
         ybottom = ymid + extract_aperture[1]
         ytop = ymid + extract_aperture[2]
         use = @views findall(((yarr .< ybottom) .|| (yarr .> ytop)) .&& isfinite.(trace_image[:, x]) .&& (trace_mask[:, x] .== 1))
@@ -177,19 +168,20 @@ end
 
 function fix_bad_pixels_interp(trace_image, xmin, xmax, poly_bottom, poly_top)
     ny, nx = size(trace_image)
-    xarr, yarr = [1.0:nx;], [0:ny-1;]
     good = findall(isfinite.(trace_image))
     bad = findall(.~isfinite.(trace_image))
     trace_image_out = copy(trace_image)
     trace_image_out[bad] .= 0
-    xx = repeat(xarr, outer=(1, ny))'
-    yy = repeat(yarr, outer=(1, nx))
+    xx = repeat(1:nx, outer=(1, ny))'
+    yy = repeat(1:ny, outer=(1, nx))
     x1 = @view xx[good]
     y1 = @view yy[good]
     trace_image_out .= SciPy.interpolate.griddata((x1, y1), trace_image[good], (xx, yy), method="linear")
-    ybottom, ytop = poly_bottom.(xarr), poly_top.(xarr)
+    yarr = 1:ny
     for x=xmin:xmax
-        bad = findall(yarr .< ybottom[x] .|| yarr .> ytop[x])
+        ybottom = poly_bottom(x)
+        ytop = poly_top(x)
+        bad = findall(yarr .< ybottom .|| yarr .> ytop)
         trace_image_out[bad, x] .= NaN
     end
     trace_image_out[:, 1:xmin-1] .= NaN

@@ -3,7 +3,6 @@ module Tracing
 using NaNStatistics, Polynomials, Peaks, Statistics
 
 using EchelleBase
-using Infiltrator
 
 export trace, gen_trace_image
 

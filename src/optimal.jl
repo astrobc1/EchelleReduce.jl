@@ -6,8 +6,6 @@ using NaNStatistics
 using EchelleBase
 using EchelleReduce
 
-using Infiltrator
-
 export OptimalExtractor, optimal_extraction
 
 struct OptimalExtractor <: SpectralExtractor
@@ -45,7 +43,7 @@ function Extract.extract_trace(extractor::OptimalExtractor, image, sregion, trac
     trace_image = copy(image)
     trace_mask = copy(badpix_mask)
     for x=1:nx
-        ymid = trace_positions(x) + 1
+        ymid = trace_positions(x)
         y_low = Int(floor(ymid - trace_params["height"] / 2))
         y_high = Int(ceil(ymid + trace_params["height"] / 2))
         if y_low > 1 && y_low < ny
@@ -160,7 +158,7 @@ function Extract.extract_trace(extractor::OptimalExtractor, image, sregion, trac
     spec1derr[bad] .= NaN
     spec1dmask[bad] .= 0
     
-    return (;spec1d=spec1d, spec1derr=spec1derr, spec1dmask=spec1dmask, trace_profile=trace_profile, )
+    return (;spec1d=spec1d, spec1derr=spec1derr, spec1dmask=spec1dmask, trace_profile=trace_profile)
 end
 
 
@@ -186,11 +184,11 @@ function optimal_extraction(image, mask, trace_positions, trace_profile, extract
         for x=1:nx
 
             # Shift Trace Profile
-            ymid = trace_positions(x) + 1
+            ymid = trace_positions(x)
             ybottom = ymid + extract_aperture[1]
             ytop = ymid + extract_aperture[2]
 
-            P = maths.cspline_interp(tpx .+ ymid, tpy, yarr)
+            P = maths.cspline_interp(tpx .+ ymid .+ 1, tpy, yarr)
             
             # Determine which pixels to use from the aperture
             inds_full = findall((yarr .>= ybottom + 0.5) .&& (yarr .<= ytop - 0.5))
@@ -306,11 +304,11 @@ function compute_model2d(extractor::OptimalExtractor, trace_image, trace_mask, s
     for x=1:nx
 
         # Shift Trace Profile
-        ymid = trace_positions(x) + 1
+        ymid = trace_positions(x)
         ybottom = ymid + extract_aperture[1]
         ytop = ymid + extract_aperture[2]
 
-        P = maths.cspline_interp(tpx .+ ymid, tpy, yarr)
+        P = maths.cspline_interp(tpx .+ ymid .+ 1, tpy, yarr)
         
         # Determine which pixels to use from the aperture
         inds_full = findall((yarr .>= ybottom + 0.5) .&& (yarr .<= ytop - 0.5))
@@ -369,7 +367,6 @@ function compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_
     ny, nx = size(trace_image)
     
     # Helpful arrays
-    xarr = [1:nx;]
     yarr = [1:ny;]
 
     # Smooth
@@ -391,7 +388,7 @@ function compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_
     for x=1:nx
         good = @views findall(isfinite.(trace_image[:, x]) .&& (trace_mask[:, x] .== 1))
         if length(good) >= 3 && spec1d_smooth[x] > 0.2
-            ymid = trace_positions(x) + 1
+            ymid = trace_positions(x)
             if !isnothing(background)
                 col_hr_shifted = @views maths.lin_interp(yarr .- ymid, trace_image_smooth[:, x] .- background[x], yarr_hr0)
             else
@@ -408,7 +405,7 @@ function compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_
 
     # Compute cubic spline for profile and ignore edge vals
     good = findall(isfinite.(trace_profile_median))
-    tpx = @views yarr_hr0[good[2:end-1]]
+    tpx = @views yarr_hr0[good[2:end-1]] .- 1 # To center at zero due to 1-based indexing
     tpy = @view trace_profile_median[good[2:end-1]]
     trace_profile = DataInterpolations.CubicSpline(tpy, tpx)
 
