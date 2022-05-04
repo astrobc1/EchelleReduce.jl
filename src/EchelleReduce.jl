@@ -16,4 +16,7 @@ include("reduction.jl")
 include("optimal.jl")
 @reexport using .OptimalExtraction
 
+include("perfectionism.jl")
+@reexport using .SPExtraction
+
 end

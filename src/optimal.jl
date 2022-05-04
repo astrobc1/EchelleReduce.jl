@@ -3,6 +3,7 @@ module OptimalExtraction
 import DataInterpolations
 import Polynomials
 using NaNStatistics
+using Infiltrator
 using EchelleBase
 using EchelleReduce
 
@@ -81,11 +82,19 @@ function Extract.extract_trace(extractor::OptimalExtractor, image, sregion, trac
 
     # Estimate background
     if extractor.remove_background
-        background = reshape(nanminimum(trace_image, dims=1), (nx,))
+        background = nanminimum(trace_image, dim=1)
         background_err = sqrt.(background)
     else
         background, background_err = nothing, nothing
     end
+
+    if extractor.remove_background
+        trace_image_no_background = trace_image .- background'
+    else
+        trace_image_no_background = trace_image
+    end
+
+    trace_positions = Extract.compute_trace_positions_centroids(trace_image_no_background, trace_mask, sregion, trace_positions, [-trace_params["height"] / 3, trace_params["height"] / 3]; trace_pos_deg=extractor.trace_pos_deg)
 
     # Starting trace profile
     trace_profile = compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_positions, background=background, oversample=extractor.oversample_profile, aperture=[-ceil(trace_params["height"] / 2), ceil(trace_params["height"] / 2)])
@@ -125,7 +134,7 @@ function Extract.extract_trace(extractor::OptimalExtractor, image, sregion, trac
 
         # Background
         if extractor.remove_background
-            background, background_err = Extract.compute_background_1d(trace_image, trace_mask, trace_positions, extract_aperture, smooth_width=31)
+            background, background_err = Extract.compute_background_1d(trace_image, trace_mask, trace_positions, extract_aperture, smooth_width=17)
         end
 
         # Optimal extraction
@@ -188,7 +197,7 @@ function optimal_extraction(image, mask, trace_positions, trace_profile, extract
             ybottom = ymid + extract_aperture[1]
             ytop = ymid + extract_aperture[2]
 
-            P = maths.cspline_interp(tpx .+ ymid .+ 1, tpy, yarr)
+            P = maths.cspline_interp(tpx .+ ymid, tpy, yarr)
             
             # Determine which pixels to use from the aperture
             inds_full = findall((yarr .>= ybottom + 0.5) .&& (yarr .<= ytop - 0.5))
@@ -275,7 +284,7 @@ function optimal_extraction(image, mask, trace_positions, trace_profile, extract
 
             # Least squares
             f = nansum(w .* S .* P) / nansum(w .* P.^2)
-            ferr = 1 / nansum(P.^ 2 ./ v)
+            ferr = sqrt(nansum(M .* P) / nansum(P.^2 .* M ./ v))
 
             # Store
             spec1d[x] = f
@@ -308,7 +317,7 @@ function compute_model2d(extractor::OptimalExtractor, trace_image, trace_mask, s
         ybottom = ymid + extract_aperture[1]
         ytop = ymid + extract_aperture[2]
 
-        P = maths.cspline_interp(tpx .+ ymid .+ 1, tpy, yarr)
+        P = maths.cspline_interp(tpx .+ ymid, tpy, yarr)
         
         # Determine which pixels to use from the aperture
         inds_full = findall((yarr .>= ybottom + 0.5) .&& (yarr .<= ytop - 0.5))
@@ -379,7 +388,7 @@ function compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_
     # 1d spec info (smooth)
     if isnothing(spec1d)
         trace_image_smooth, _ = Extract.fix_bad_pixels_interp(trace_image_smooth, sregion.pixmin, sregion.pixmax, trace_positions + aperture[1], trace_positions + aperture[2])
-        spec1d = collect(Iterators.flatten(NaNStatistics.nansum(trace_image_smooth, dims=1)))
+        spec1d = NaNStatistics.nansum(trace_image_smooth, dim=1)
     end
     spec1d_smooth = maths.median_filter1d(spec1d, 3)
     spec1d_smooth ./= maths.weighted_median(spec1d_smooth, p=0.98)
@@ -401,11 +410,11 @@ function compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_
     end
     
     # Compute trace profile
-    trace_profile_median = reshape(nanmedian(trace_image_rect_norm, dims=2), (length(yarr_hr0),))
+    trace_profile_median = nanmedian(trace_image_rect_norm, dim=2)
 
     # Compute cubic spline for profile and ignore edge vals
     good = findall(isfinite.(trace_profile_median))
-    tpx = @views yarr_hr0[good[2:end-1]] .- 1 # To center at zero due to 1-based indexing
+    tpx = @views yarr_hr0[good[2:end-1]]
     tpy = @view trace_profile_median[good[2:end-1]]
     trace_profile = DataInterpolations.CubicSpline(tpy, tpx)
 

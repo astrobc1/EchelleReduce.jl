@@ -20,16 +20,16 @@ function extract_image(extractor::SpectralExtractor, data::SpecData2d, data_imag
     for i=1:length(traces)
         trace_params = traces[i]
         println("[$(data)] Extracting Trace $(trace_params["label"])")
-        #try
+        try
             ti = time()
             result = extract_trace(extractor, data_image, sregion, trace_params, badpix_mask=badpix_mask, read_noise=read_noise)
             push!(reduced_data, result)
             println("[$(data)] Extracted Trace $(trace_params["label"]) in $(round((time() - ti)/ 60, sigdigits=3)) min")
 
-        #catch
-        #    @warn "Warning! Could not extract trace $(trace["label"]) for $(data)"
-        #    push!(reduced_data, nothing)
-        #end
+        catch
+            @warn "Warning! Could not extract trace $(trace["label"]) for $(data)"
+            push!(reduced_data, nothing)
+        end
     end
 
     return reduced_data
@@ -69,6 +69,10 @@ function plot_extracted_spectrum(data::SpecData2d, reduced_data::Vector, sregion
             end
 
             trace_params = traces[trace_index]
+            
+            if isnothing(reduced_data[trace_index])
+                continue
+            end
             
             # Views
             spec1d = reduced_data[trace_index].spec1d

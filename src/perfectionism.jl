@@ -1,5 +1,17 @@
+module SPExtraction
+
 using EchelleBase
 using EchelleReduce
+
+using Polynomials
+using NaNStatistics
+using Infiltrator
+using LinearAlgebra
+using SparseArrays
+using Arpack
+using DataInterpolations
+
+export SPExtractor
 
 mutable struct SPExtractor <: SpectralExtractor
     trace_pos_deg::Int
@@ -7,28 +19,27 @@ mutable struct SPExtractor <: SpectralExtractor
     n_iterations::Int
     chunk_width::Int
     badpix_σ::Int
-    σpoly::Polynomial
     extract_aperture::Int
+    σpoly::Polynomial
     qpoly::Polynomial
     θpoly::Polynomial
 end
 
-function get_psf_matrix(trace_image, xa, trace_positions, σpoly, qpoly, θpoly, aperture)
+function SPExtractor(;trace_pos_deg, oversample=1, n_iterations=20, chunk_width=100, badpix_σ=5, extract_aperture, σpoly, qpoly, θpoly)
+    return SPExtractor(trace_pos_deg, oversample, n_iterations, chunk_width, badpix_σ, extract_aperture, σpoly, qpoly, θpoly)
+end
+
+function get_psf_tensor(trace_image, xa, ya, xd, yd, trace_positions, σpoly, qpoly, θpoly, aperture)
 
     # Image dims
     ny, nx = size(trace_image)
 
     # Aperture size (half)
-    aperture_size_half = Int(ceil((aperture[2] - aperture[1]) / 2))
+    aperture_size_half = Int(ceil(aperture / 2))
 
     # Initialize A
     n_apertures = length(xa)
     A = zeros(ny, nx, n_apertures)
-
-    # Helpful arrays
-    xd = [1:nx;]
-    yd = [1:ny;]
-    ya = trace_positions.(xa) .+ 1
 
     # PSF Parameters
     σ = σpoly.(xa)
@@ -37,15 +48,15 @@ function get_psf_matrix(trace_image, xa, trace_positions, σpoly, qpoly, θpoly,
 
     # Loops!
     for m=1:n_apertures
+
+        # Centroid of the aperture
+        xkc = xa[m]
+        ykc = trace_positions(xkc)
+
         for i=1:nx
             for j=1:ny
 
-                # (x, y) of the center of the aperture, relative to dims of image
-                xkc = xa[m]
-                ykc = ya[m]
-
-                # Coordinates
-                # (x, y) of the psf, relative to dims of image
+                # Coordinates of the psf for this aperture
                 xl = xd[i]
                 yl = yd[j]
 
@@ -84,7 +95,7 @@ end
 function extract_SP2d(A, S, Ninv)
     
     # Convert to sparse
-    A = SparseMatrixCSC(reshape(A, (size(A)[1] * size(A)[2], size(A)[3])))
+    A = SparseMatrixCSC(A)
     S = SparseMatrixCSC(reshape(S, (length(S), 1)))
     Ninv = SparseMatrixCSC(Ninv)
     
@@ -93,8 +104,8 @@ function extract_SP2d(A, S, Ninv)
     result = svd(collect(Cinv))
     U = result.U
     Vt = result.Vt
-    S = result.S
-    Cpsuedo = transpose(Vt) * diagm(1 ./ S) * transpose(U)
+    ss = result.S
+    Cpsuedo = transpose(Vt) * diagm(1 ./ ss) * transpose(U)
     Cpsuedo = SparseMatrixCSC(Cpsuedo)
 
     # Initial flux
@@ -103,7 +114,7 @@ function extract_SP2d(A, S, Ninv)
         
     # Compute reconvolution matrix
     Cinv = SparseMatrixCSC(Cinv)
-    f, Wt = eigvals(Cinv, minimum(size(Cinv)) - 2)
+    f, Wt = eigs(Cinv, nev=minimum(size(Cinv)) - 2)
     F = diagm(f)
     F .= abs.(F)
     
@@ -115,50 +126,52 @@ function extract_SP2d(A, S, Ninv)
     R = Sinv * WtDhW
     
     # Reconvolve
-    fluxtilde = R * flux
+    fluxt = R * flux
 
     # Convert to final arrays
-    flux = reshape(flux, nx)
-    fluxt = reshape(flux, nx)
+    flux = reshape(real.(flux), length(flux))
+    fluxt = reshape(real.(fluxt), length(fluxt))
 
     return flux, fluxt, R
 end
 
-function compute_model2d(data, trace_image, trace_mask, trace_params, spec1d, trace_positions, σpoly, qpoly, θpoly, extract_aperture)
+function Extract.compute_model2d(extractor::SPExtractor, trace_image::AbstractMatrix, trace_mask::AbstractMatrix, spec1d::AbstractVector, trace_positions::Polynomial)
 
     # Dims
     ny, nx = size(trace_image)
 
     # Number of chunks
-    chunks = generate_chunks(trace_image, trace_mask)
+    chunks = generate_chunks(trace_image, trace_mask, extractor.chunk_width)
 
     # Copy input spectrum and fix nans (inside bounds)
     f = copy(spec1d)
     xarr = [1:nx;]
     good = findall(isfinite.(f))
-    bad = np.where(.~isfinite.(f))
+    bad = findall(.~isfinite.(f))
     f[bad] .= @views maths.lin_interp(xarr[good], f[good], xarr[bad])
     bad = findall(.~isfinite.(f))
-    f[bad] = 0
+    f[bad] .= 0
 
     # Stitch points
-    model2d = fill(NaN, (ny, nx, length(chunks))
+    model2d = fill(NaN, (ny, nx, length(chunks)))
+    distrust_width = Int(extractor.extract_aperture * 2)
 
     # Loop over chunks
     for i=1:length(chunks)
-        xxi, xxf = chunks[i][1], chunks[i][2]
-        nnnx = xxf - xxi + 1
-        good = @views findall(trace_mask[:, xxi:xxf])
+        xi, xf = chunks[i][1], chunks[i][2]
+        nnx = xf - xi + 1
+        good = @views findall(trace_mask[:, xi:xf] .== 1)
         goody = [coord.I[1] for coord ∈ good]
-        yyi, yyf = minimum(goody) maximum(goody)
-        nnny = yyf - yyi + 1
-        S = @view trace_image[yyi:yyf, xxi:xxf]
-        xarr_aperture = [xxi:xxf;]
-        A = get_psf_matrix(S, xarr_aperture, trace_positions, σpoly, qpoly, θpoly, aperture)
-        Aflat = reshape(A, (nnny*nnnx, nnnx))
-        model2d[yyi:yyf+1, xxi:xxf+1, i] = @views reshape(Aflat * f[xxi:xxf+1], (nnny, nnnx))
-        model2d[:, xxi:xxi+20, i] .= NaN
-        model2d[:, xxf-20:xxf+1, i] .= NaN
+        yi, yf = minimum(goody), maximum(goody)
+        nny = yf - yi + 1
+        S = @view trace_image[yi:yf, xi:xf]
+        xarr_aperture = [(xi - 0.5 + 0.5 / extractor.oversample):(1 / extractor.oversample):(xf + 0.5 - 0.5 / extractor.oversample);]
+        yarr_aperture = [(yi - 0.5 + 0.5 / extractor.oversample):(1 / extractor.oversample):(yf + 0.5 - 0.5 / extractor.oversample);]
+        A = get_psf_tensor(S, xarr_aperture, yarr_aperture, xi:xf, yi:yf, trace_positions, extractor.σpoly, extractor.qpoly, extractor.θpoly, extractor.extract_aperture)
+        Aflat = reshape(A, (nny*nnx, nnx))
+        model2d[yi:yf, xi:xf, i] = @views reshape(Aflat * f[xi:xf], (nny, nnx))
+        model2d[:, xi:xi+distrust_width, i] .= NaN
+        model2d[:, xf-distrust_width:xf, i] .= NaN
     end
 
     # Average chunks
@@ -168,7 +181,7 @@ function compute_model2d(data, trace_image, trace_mask, trace_params, spec1d, tr
 end
 
 
-function generate_chunks(trace_image, trace_mask)
+function generate_chunks(trace_image, trace_mask, chunk_width)
     good = findall(trace_mask .== 1)
     goody = [coord.I[1] for coord ∈ good]
     goodx = [coord.I[2] for coord ∈ good]
@@ -180,7 +193,7 @@ function generate_chunks(trace_image, trace_mask)
     chunks = []
     push!(chunks, (xi, xi + chunk_width))
     for i=2:Int(2 * ceil(nnx / chunk_width))
-        vi = chunks[i-1][1] - Int(floor(chunk_width / 2))
+        vi = chunks[i-1][2] - Int(floor(chunk_width / 2))
         vf = min(vi + chunk_width, xf)
         push!(chunks, (vi, vf))
         if vf == xf
@@ -195,14 +208,14 @@ function bin_spec1d(spec1dhr, oversample)
     return nansum(reshape(spec1dhr, (nx, oversample)), dims=2)[:]
 end
 
-function Extract.extract_trace(extractor::SPExtractor, trace_image::Matrix, trace_mask::Matrix, trace_positions::Polynomial, extract_aperture; read_noise=0)
+function Extract.extract_trace(extractor::SPExtractor, trace_image::AbstractMatrix, trace_mask::AbstractMatrix, sregion::SpecRegion2d, trace_positions::Polynomial; read_noise=0)
     
     # Copy input
     trace_image_cp = copy(trace_image)
     trace_mask_cp = copy(trace_mask)
 
     # Fix bad pixels
-    fix_bad_pixels_interp!(trace_image_cp, trace_mask_cp)
+    trace_image_cp, trace_mask_cp = Extract.fix_bad_pixels_interp(trace_image, sregion.pixmin, sregion.pixmax, trace_positions - extractor.extract_aperture - 1, trace_positions + extractor.extract_aperture + 1)
 
     # Dims
     ny, nx = size(trace_image_cp)
@@ -218,13 +231,15 @@ function Extract.extract_trace(extractor::SPExtractor, trace_image::Matrix, trac
     trace_mask_cp[bad] .= 0
 
     # Chunks
-    chunks = generate_chunks(trace_image, trace_mask_cp, chunk_width)
+    chunks = generate_chunks(trace_image, trace_mask_cp, extractor.chunk_width)
     n_chunks = length(chunks)
 
     # Outputs (averaged over chunks before returning)
-    spec1d = fill(NaN, (nx, n_chunks)
-    spec1dt = fill(NaN, (nx, n_chunks)
-    R = fill(NaN, (nx, nx, n_chunks)
+    spec1d = fill(NaN, (nx, n_chunks))
+    spec1dt = fill(NaN, (nx, n_chunks))
+    R = fill(NaN, (nx, nx, n_chunks))
+
+    distrust_width = Int(extractor.extract_aperture * 2)
 
     # Loop over and extract chunks
     for i=1:n_chunks
@@ -236,100 +251,104 @@ function Extract.extract_trace(extractor::SPExtractor, trace_image::Matrix, trac
         # Y pixel bounds  for this chunk
         good = @views findall(trace_mask_cp[:, xi:xf] .== 1)
         goody = [coord.I[1] for coord ∈ good]
-        yi, yf = minimum(goody), maxmimum(goody)
+        yi, yf = minimum(goody), maximum(goody)
         nny = yf - yi + 1
 
         # Crop image and mask to this chunk
         S = @view trace_image_cp[yi:yf, xi:xf]
         M = @view trace_mask_cp[yi:yf, xi:xf]
 
-        # X centroid of each aperture in index units
-        xarr_aperture = [(-0.5 + 0.5 / oversample):(1 / oversample):(nnx - 1 + 0.5 - 0.5 / oversample);] .+ 1
+        # Aperture arrays
+        xarr_aperture = [(xi - 0.5 + 0.5 / extractor.oversample):(1 / extractor.oversample):(xf + 0.5 - 0.5 / extractor.oversample);]
+        yarr_aperture = [(yi - 0.5 + 0.5 / extractor.oversample):(1 / extractor.oversample):(yf + 0.5 - 0.5 / extractor.oversample);]
 
         # Generate Aperture tensor for this chunk
-        A = get_psf_matrix(S, xarr_aperture, trace_positions, extractor.σpoly, extractor.qpoly, extractor.θpoly, extract_aperture)
+        A = get_psf_tensor(S, xarr_aperture, yarr_aperture, xi:xf, yi:yf, trace_positions, extractor.σpoly, extractor.qpoly, extractor.θpoly, extractor.extract_aperture)
 
         # Prep inputs for sparse extraction
         Aflat = reshape(A, (nny*nnx, length(xarr_aperture)))
         Sflat = collect(Iterators.flatten(S))
-        Ninv = 1 ./ (S + read_noise**2)
+        Ninv = 1 ./ (S .+ read_noise^2)
         bad = findall(.~isfinite.(Ninv))
         Ninv[bad] .= 0
-        Wbig = diagm(Iterators.flatten(Ninv))
+        Wbig = diagm(collect(Iterators.flatten(Ninv)))
 
         # Call sparse extraction
         syhr, sythr, _Rhr = extract_SP2d(Aflat, Sflat, Wbig)
 
         # Bin back to detector grid
-        sy = bin_spec1d(syhr)
-        syt = bin_spec1d(sythr)
+        sy = bin_spec1d(syhr, extractor.oversample)
+        syt = bin_spec1d(sythr, extractor.oversample)
 
         # Mask edge errors
-        distrust_width = Int(maximum(abs.(extract_aperture)) * 2)
         sy[1:distrust_width] .= NaN
-        sy[-distrust_width:end] .= NaN
+        sy[end-distrust_width:end] .= NaN
         syt[1:distrust_width] .= NaN
-        syt[-distrust_width:end] .= NaN
+        syt[end-distrust_width:end] .= NaN
         _Rhr[1:distrust_width, 1:distrust_width] .= NaN
-        _Rhr[-distrust_width:end, -distrust_width:end] .= NaN
+        _Rhr[end-distrust_width:end, end-distrust_width:end] .= NaN
 
         # Store results
-        spec1d[xi:xf+1, i] .= sy
-        spec1dt[xi:xf+1, i] .= syt
-        spec1d[xi:xf+1, i] .= sy
-        spec1dt[xi:xf+1, i] .= syt
-        R[xi:xf+1, xi:xf+1, i] .= _Rhr
+        spec1d[xi:xf, i] .= sy
+        spec1dt[xi:xf, i] .= syt
+        spec1d[xi:xf, i] .= sy
+        spec1dt[xi:xf, i] .= syt
+        #R[xi:xf, xi:xf, i] .= _Rhr
     end
+
+    @infiltrate
 
     # Final trim of edges
     spec1d[1:xi+distrust_width, 1] .= NaN
     spec1d[xf-distrust_width:end, end-1] .= NaN
     spec1dt[1:xi+distrust_width, 1] .= NaN
     spec1dt[xf-distrust_width:end, end-1] .= NaN
-    R[:, 1:xi+distrust_width, 1] .= NaN
-    R[:, xf-distrust_width:end, end-1] .= NaN
+    #R[:, 1:xi+distrust_width, 1] .= NaN
+    #R[:, xf-distrust_width:end, end-1] .= NaN
 
     # Correct negatives and zeros in reconvolved spectrum
-    bad = findall(spec1dt .<= 0)
+    bad = findall(spec1dt .<= 1E-5)
     spec1dt[bad] .= NaN
 
     # Average each chunk
     spec1d = nanmean(spec1d, dims=2)[:]
-    spec1d_unc = sqrt.(spec1d)
-    spec1dt = np.nanmean(spec1dt, dims=2)[:]
-    spec1dt_unc = sqrt.(spec1dt)
+    #spec1d_unc = sqrt.(spec1d)
+    spec1d_unc = ones(length(spec1d))
+    spec1dt = nanmean(spec1dt, dims=2)[:]
+    spec1dt_unc = ones(length(spec1dt))
+    #spec1dt_unc = sqrt.(spec1dt)
 
     # For R, make sure each psf is normalized to sum=1
-    RR = nanmean(R, dims=2)[:, :]
-    for i=1:nx
-        RR[i, :] ./= @views nansum(RR[i, :])
-    end
-    goody, goodx = np.where(np.isfinite(RR))
-    good = findall(isfinite.(RR))
+    #RR = nanmean(R, dims=3)[:, :]
+    #for i=1:nx
+    #    RR[i, :] ./= @views nansum(RR[i, :])
+    #end
+    #good = findall(isfinite.(RR))
     goody = [coord.I[1] for coord ∈ good]
+    goodx = [coord.I[2] for coord ∈ good]
     xi, xf = minimum(goodx), maximum(goodx)
-    for x=1:nx
-        try
-            RR[x, 1:xi+20] .= 0
-            RR[x, xf - 20:] .= 0
-        catch
-            nothing
-        end
-    end
+    # for x=1:nx
+    #     try
+    #         RR[x, 1:xi+distrust_width] .= 0
+    #         RR[x, xf - distrust_width:end] .= 0
+    #     catch
+    #         nothing
+    #     end
+    # end
 
-    bad = findall(RR .< 0)
-    RR[bad] .= 0
-    for x=1:nx
-        RR[x, :] ./= @views nansum(RR[x, :])
-    end
+    #bad = findall(RR .< 0)
+    #RR[bad] .= 0
+    #for x=1:nx
+    #    RR[x, :] ./= @views nansum(RR[x, :])
+    #end
 
-    RR[1:xi-20, :] .= 0
-    RR[xf - 20:end, :] .= 0
+    #RR[1:xi-distrust_width, :] .= 0
+    #RR[xf - distrust_width:end, :] .= 0
 
-    bad = findall((RR .<= 0) .|| .~isfinite.(RR))
-    RR[bad] = 0
+    #bad = findall((RR .< 0) .|| .~isfinite.(RR))
+    #RR[bad] .= 0
 
-    bad = findall(.~.isfinite.(spec1dt) .|| (spec1dt .<= 0))
+    bad = findall(.~isfinite.(spec1dt) .|| (spec1dt .<= 0))
     spec1dt[bad] .= NaN
 
     # Return
@@ -337,7 +356,7 @@ function Extract.extract_trace(extractor::SPExtractor, trace_image::Matrix, trac
 
 end
 
-function Extract.extract_trace(extractor::SPExtractor, image::Matrix, sregion::SpecRegion1d, trace_params::Dict; badpix_mask=nothing, read_noise=0.0)
+function Extract.extract_trace(extractor::SPExtractor, image::Matrix, sregion::SpecRegion2d, trace_params::Dict; badpix_mask=nothing, read_noise=0.0)
 
     # Copy image
     image = copy(image)
@@ -395,37 +414,34 @@ function Extract.extract_trace(extractor::SPExtractor, image::Matrix, sregion::S
     trace_image[bad] .= NaN
     trace_mask[bad] .= 0
 
+    # Initial trace positions
+    aperture = [-extractor.extract_aperture, extractor.extract_aperture]
+    trace_positions = Extract.compute_trace_positions_centroids(trace_image, trace_mask, sregion, trace_positions, aperture; trace_pos_deg=extractor.trace_pos_deg)
+
     # Initial spectrum
-    spec1d, spec1derr = extract_trace(extractor, trace_image, trace_mask, trace_positions, read_noise=0)
+    spec1d, spec1derr, spec1dt, spec1dterr, RR = extract_trace(extractor, trace_image, trace_mask, sregion, trace_positions, read_noise=0)
 
     # Main loop
     for i=1:extractor.n_iterations
 
         println(" Iteration $i")
 
-        trace_positions = Extract.compute_trace_positions_centroids(trace_image_no_background, trace_mask, sregion, trace_positions, extract_aperture; trace_pos_deg=extractor.trace_pos_deg)
+        trace_positions = Extract.compute_trace_positions_centroids(trace_image, trace_mask, sregion, trace_positions, aperture; trace_pos_deg=extractor.trace_pos_deg)
 
-        # Extract Aperture
-        if isnothing(extractor.extract_aperture)
-            extract_aperture = get_vertical_extract_aperture(trace_profile)
-        else
-            extract_aperture = copy(extractor.extract_aperture)
-        end
-
-        # Optimal extraction
-        spec1d, spec1derr = extract_trace(extractor, trace_image, trace_mask, trace_positions, trace_profile, extract_aperture, background, background_err, read_noise, 5)
+        # SP extraction
+        spec1d, spec1derr, spec1dt, spec1dterr, RR = extract_trace(extractor, trace_image, trace_mask, sregion, trace_positions, read_noise=0)
 
         # Re-map pixels and flag in the 2d image.
         if i < extractor.n_iterations
 
             # 2d model
-            spec1d_smooth = maths.median_filter1d(spec1d, 3)
-            model2d_smooth = compute_model2d(extractor, trace_image, trace_mask, spec1d_smooth, trace_profile, trace_positions, extract_aperture, background)
-            model2d_smooth = maths.median_filter2d(model2d_smooth, 3)
+            #spec1dt_smooth = maths.median_filter1d(spec1dt, 3)
+            model2d = Extract.compute_model2d(extractor, trace_image, trace_mask, spec1dt, trace_positions)
+            #model2d_smooth = maths.median_filter2d(model2d_smooth, 3)
 
             # Flag
             n_bad_current = sum(trace_mask)
-            Extract.flag_pixels2d!(trace_image, trace_mask, model2d_smooth, extractor.badpix_σ)
+            Extract.flag_pixels2d!(trace_image, trace_mask, model2d, extractor.badpix_σ)
             n_bad_new = sum(trace_mask)
             
             # Break if nothing new is flagged but force 3 iterations
@@ -437,11 +453,13 @@ function Extract.extract_trace(extractor::SPExtractor, image::Matrix, sregion::S
 
     # 1d badpix mask
     spec1dmask = ones(nx)
-    bad = findall(.~isfinite.(spec1d) .|| (spec1d .<= 0) .|| .~isfinite.(spec1derr) .|| (spec1derr .<= 0))
-    spec1d[bad] .= NaN
-    spec1derr[bad] .= NaN
+    bad = findall(.~isfinite.(spec1dt) .|| (spec1dt .<= 0) .|| .~isfinite.(spec1dterr) .|| (spec1dterr .<= 0))
+    spec1dt[bad] .= NaN
+    spec1dterr[bad] .= NaN
     spec1dmask[bad] .= 0
     
-    return (;spec1d=spec1d, spec1derr=spec1derr, spec1dmask=spec1dmask, reconv_matrix)
+    return (;spec1d=spec1dt, spec1derr=spec1dterr, spec1dmask=spec1dmask)
 
 end 
+
+end

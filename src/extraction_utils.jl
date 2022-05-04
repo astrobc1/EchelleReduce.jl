@@ -5,8 +5,8 @@ using SciPy
 using NaNStatistics
 
 function estimate_snr(trace_image)
-    spec1d = nansum(trace_image, dims=1)
-    spec1d_smooth = nansum(maths.median_filter2d(trace_image, 5), dims=1)
+    spec1d = nansum(trace_image, dim=1)
+    spec1d_smooth = nansum(maths.median_filter2d(trace_image, 5), dim=1)
     med_val = maths.weighted_median(spec1d_smooth, p=0.98)
     spec1d ./= med_val
     spec1d_smooth ./= med_val
@@ -86,7 +86,7 @@ function compute_trace_positions_centroids(trace_image, trace_mask, sregion, tra
     trace_image, trace_mask = fix_bad_pixels_interp(trace_image, sregion.pixmin, sregion.pixmax, trace_positions + aperture[1], trace_positions + aperture[2])
 
     # Smoothed 1d spectrum
-    spec1d = maths.median_filter1d(nansum(maths.median_filter2d(trace_image, 3), dims=1)[:], 3)
+    spec1d = maths.median_filter1d(nansum(maths.median_filter2d(trace_image, 3), dim=1), 3)
     med_val = maths.weighted_median(spec1d, p=0.98)
     spec1d ./= med_val
 
@@ -106,7 +106,7 @@ function compute_trace_positions_centroids(trace_image, trace_mask, sregion, tra
         end
 
         # Centroid
-        ycen[x] = @views maths.weighted_mean(use, (trace_image[use, x]))
+        ycen[x] = @views maths.weighted_mean(use, trace_image[use, x])
     end
 
     # Flag
