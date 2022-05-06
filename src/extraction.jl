@@ -27,7 +27,7 @@ function extract_image(extractor::SpectralExtractor, data::SpecData2d, data_imag
             println("[$(data)] Extracted Trace $(trace_params["label"]) in $(round((time() - ti)/ 60, sigdigits=3)) min")
 
         catch
-            @warn "Warning! Could not extract trace $(trace["label"]) for $(data)"
+            @warn "Warning! Could not extract trace $(trace_params["label"]) for $(data)"
             push!(reduced_data, nothing)
         end
     end
