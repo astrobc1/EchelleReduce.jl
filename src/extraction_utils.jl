@@ -1,7 +1,7 @@
 
 using EchelleBase
 
-using SciPy
+using PyCall
 using NaNStatistics
 
 function estimate_snr(trace_image)
@@ -176,7 +176,8 @@ function fix_bad_pixels_interp(trace_image, xmin, xmax, poly_bottom, poly_top)
     yy = repeat(1:ny, outer=(1, nx))
     x1 = @view xx[good]
     y1 = @view yy[good]
-    trace_image_out .= SciPy.interpolate.griddata((x1, y1), trace_image[good], (xx, yy), method="linear")
+    scipy_interp = pyimport("scipy.interpolate")
+    trace_image_out .= scipy_interp.griddata((x1, y1), trace_image[good], (xx, yy), method="linear")
     yarr = 1:ny
     for x=xmin:xmax
         ybottom = poly_bottom(x)
