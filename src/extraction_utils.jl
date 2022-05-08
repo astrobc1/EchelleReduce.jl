@@ -33,7 +33,7 @@ function refine_initial_trace_window(image, badpix_mask, sregion, trace_params; 
         image_cp = copy(image)
 
         # Mask image
-        mask_image!(image_cp, sregion)
+        mask!(image_cp, sregion)
 
         # Copy
         trace_image = copy(image_cp)

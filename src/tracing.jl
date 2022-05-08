@@ -26,7 +26,7 @@ function trace(data::SpecData2d, sregion::SpecRegion2d; trace_pos_deg=2, min_ord
 
     # Mask
     image = copy(image)
-    mask_image!(image, sregion)
+    mask!(image, sregion)
 
     # Smooth the image
     image_smooth = maths.median_filter2d(image, 3)
@@ -132,7 +132,7 @@ function gen_trace_image(traces, ny, nx, sregion)
     end
 
     # Mask image
-    mask_image!(order_image, sregion)
+    mask!(order_image, sregion)
 
     # Return
     return order_image
