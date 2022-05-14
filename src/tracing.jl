@@ -3,6 +3,7 @@ module Tracing
 using NaNStatistics, Polynomials, Peaks, Statistics
 
 using EchelleBase
+using Infiltrator
 
 export trace, gen_trace_image
 
@@ -25,6 +26,15 @@ function trace(data::SpecData2d, sregion::SpecRegion2d; trace_pos_deg=2, min_ord
     end
 
     # Mask
+    #@infiltrate
+    # using PyPlot
+    # begin
+    #     xx = 1:nx
+    #     imshow(image, extent=(0.5, nx+0.5, ny+0.5, 0.5), vmin=0, vmax=100)
+    #     plot(xx, sregion.poly_bottom.(xx), c="red")
+    #     plot(xx, sregion.poly_top.(xx), c="red")
+    #     ylim(0.5, ny+0.5)
+    # end
     image = copy(image)
     mask!(image, sregion)
 
