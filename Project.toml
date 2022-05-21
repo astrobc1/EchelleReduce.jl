@@ -4,6 +4,7 @@ authors = ["Bryson Cale <bryson.cale1@gmail.com>"]
 version = "0.1.0"
 
 [deps]
+Arpack = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
 DataInterpolations = "82cc6244-b520-54b8-b5a6-8a565e85f1d0"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 EchelleBase = "fb2f92b1-9968-41b4-8835-2765b866fa7d"
@@ -17,4 +18,5 @@ PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
 SciPy = "ebc72ef8-9537-4fb0-b64e-ac76025fed2d"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
