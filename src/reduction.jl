@@ -1,6 +1,4 @@
-export ReduceRecipe, initialize_data, create_output_dirs, gen_master_calib_images, trace, extract, reduce
-
-abstract type ReduceRecipe end
+export initialize_data, create_output_dirs, gen_master_calib_images, trace, extract, reduce
 
 function reduce end
 function initialize_data end

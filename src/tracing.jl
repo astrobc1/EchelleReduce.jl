@@ -9,6 +9,7 @@ export trace, gen_trace_image
 
 function trace(data::SpecData2d, sregion::SpecRegion2d; trace_pos_deg=2, min_order_spacing, xleft=nothing, xright=nothing, n_slices=20, fiber=nothing)
 
+    # Load image
     image = read_image(data)
 
     # dims

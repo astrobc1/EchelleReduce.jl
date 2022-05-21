@@ -9,17 +9,21 @@ using EchelleReduce
 
 export OptimalExtractor, optimal_extraction
 
-struct OptimalExtractor <: SpectralExtractor
+mutable struct OptimalExtractor <: SpectralExtractor
     n_iterations::Int
     remove_background::Bool
+    background_smooth_width::Int
     oversample_profile::Int
     trace_pos_deg::Int
     badpix_σ::Float64
     extract_aperture::Union{Vector{Int}, Nothing}
 end
 
-function OptimalExtractor(;n_iterations=20, remove_background=false, oversample_profile=8, trace_pos_deg=4, badpix_σ=6, extract_aperture=nothing)
-    return OptimalExtractor(n_iterations, remove_background, oversample_profile, trace_pos_deg, badpix_σ, extract_aperture)
+function OptimalExtractor(;n_iterations=20, remove_background=false, background_smooth_width=nothing, oversample_profile=8, trace_pos_deg=4, badpix_σ=6, extract_aperture=nothing)
+    if isnothing(background_smooth_width)
+        background_smooth_width = 0
+    end
+    return OptimalExtractor(n_iterations, remove_background, background_smooth_width, oversample_profile, trace_pos_deg, badpix_σ, extract_aperture)
 end
 
 function Extract.extract_trace(extractor::OptimalExtractor, image, sregion, trace_params; badpix_mask=nothing, read_noise=0.0)
@@ -134,7 +138,7 @@ function Extract.extract_trace(extractor::OptimalExtractor, image, sregion, trac
 
         # Background
         if extractor.remove_background
-            background, background_err = Extract.compute_background_1d(trace_image, trace_mask, trace_positions, extract_aperture, smooth_width=17)
+            background, background_err = Extract.compute_background_1d(trace_image, trace_mask, trace_positions, extract_aperture, smooth_width=extractor.background_smooth_width)
         end
 
         # Optimal extraction
@@ -167,14 +171,14 @@ function Extract.extract_trace(extractor::OptimalExtractor, image, sregion, trac
     spec1derr[bad] .= NaN
     spec1dmask[bad] .= 0
     
-    return (;spec1d=spec1d, spec1derr=spec1derr, spec1dmask=spec1dmask, trace_profile=trace_profile)
+    return (;spec1d=spec1d, spec1derr=spec1derr, spec1dmask=spec1dmask, trace_profile=trace_profile, trace_positions=trace_positions)
 end
 
 
-function optimal_extraction(image, mask, trace_positions, trace_profile, extract_aperture, background=nothing, background_err=nothing, read_noise=0, n_iterations=1)
+function optimal_extraction(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, trace_positions::Polynomials.Polynomial, trace_profile, extract_aperture, background=nothing, background_err=nothing, read_noise=0, n_iterations=1)
 
     # Image dims
-    ny, nx = size(image)
+    ny, nx = size(trace_image)
     
     # Helper array
     yarr = [1:ny;]
@@ -185,6 +189,9 @@ function optimal_extraction(image, mask, trace_positions, trace_profile, extract
 
     # Tpy
     tpx, tpy = trace_profile.t, trace_profile.u
+
+    # Use a consistent normalization factor
+    PA = DataInterpolations.integral(trace_profile, minimum(tpx), maximum(tpx))
 
     # Loop over iterations
     for i=1:n_iterations
@@ -200,56 +207,27 @@ function optimal_extraction(image, mask, trace_positions, trace_profile, extract
             P = maths.cspline_interp(tpx .+ ymid, tpy, yarr)
             
             # Determine which pixels to use from the aperture
-            inds_full = findall((yarr .>= ybottom + 0.5) .&& (yarr .<= ytop - 0.5))
-            if length(inds_full) < 1
-                continue
-            end
-            ind_bottom = minimum(inds_full) - 1
-            ind_top = maximum(inds_full) + 1
-            if ind_bottom < 1 || ind_top > ny
+            window = findall((yarr .>= ybottom - 0.5) .&& (yarr .<= ytop + 0.5))
+            if length(window) < 1
                 continue
             end
 
-            if ceil(ybottom) - ybottom > 0.5
-                frac_bottom = ceil(ybottom) - ybottom - 0.5
-            else
-                frac_bottom = ceil(ybottom) - ybottom + 0.5
-            end
-            if ytop - floor(ytop) < 0.5
-                frac_top = ytop - floor(ytop) + 0.5
-            else
-                frac_top = ytop - floor(ytop) - 0.5
-            end
-
-            P_full = @view P[inds_full]
-            P_bottom = P[ind_bottom] * frac_bottom
-            P_top = P[ind_top] * frac_top
-            P = vcat(P_bottom, P_full, P_top)
-
-            # Can't extract without full profile
+            # Profile
+            P = P[window]
             if any(.~isfinite.(P))
                 continue
             end
-            P ./= sum(P)
+            P ./= PA
 
             # Data
             if !isnothing(background)
-                S_full = @views image[inds_full, x] .- background[x]
-                S_bottom = image[ind_bottom, x] - background[x]
-                S_top = image[ind_top, x] - background[x]
-                S = vcat(S_bottom, S_full, S_top)
+                S = @views trace_image[window, x] .- background[x]
             else
-                S_full = @view image[inds_full, x]
-                S_bottom = image[ind_bottom, x]
-                S_top = image[ind_top, x]
-                S = vcat(S_bottom, S_full, S_top)
+                S = trace_image[window, x]
             end
 
             # Mask
-            M_full = mask[inds_full, x]
-            M_bottom = mask[ind_bottom, x]
-            M_top = mask[ind_top, x]
-            M = vcat(M_bottom, M_full, M_top)
+            M = trace_mask[window, x]
 
             # Fix negative flux
             bad = findall(S .< 0)
@@ -277,25 +255,30 @@ function optimal_extraction(image, mask, trace_positions, trace_profile, extract
             end
 
             # Weights
-            w = P.^2 .* M ./ v
-            bad = findall(.~isfinite.(w))
-            w[bad] .= 0
-            w ./= sum(w)
+            #w = P.^2 .* M ./ v
+            #bad = findall(.~isfinite.(w))
+            #w[bad] .= 0
+            #w ./= sum(w)
 
             # Least squares
-            f = nansum(w .* S .* P) / nansum(w .* P.^2)
-            ferr = sqrt(nansum(M .* P) / nansum(P.^2 .* M ./ v))
+            #f = nansum(w .* S .* P) / nansum(w .* P.^2) # = nansum(P.^2 .* M .* S .* P ./ v) / nansum(P.^2 .* M .* P.^2)
+            #ferr = sqrt(nansum(M .* P) / nansum(M .* P.^2 ./ v))
+
+            # Horne
+            f = nansum(M .* P .* S ./ v) / nansum(M .* P.^2 ./ v)
+            ferr = sqrt(nansum(M .* P) / nansum(M .* P.^2 ./ v))
 
             # Store
             spec1d[x] = f
             spec1derr[x] = ferr
+
         end
     end
 
     return spec1d, spec1derr
 end
 
-function compute_model2d(extractor::OptimalExtractor, trace_image, trace_mask, spec1d, trace_profile, trace_positions, extract_aperture, background=nothing)
+function compute_model2d(extractor::OptimalExtractor, trace_image::AbstractMatrix, trace_mask::AbstractMatrix, spec1d, trace_profile, trace_positions, extract_aperture, background=nothing)
 
     # Dims
     ny, nx = size(trace_image)
@@ -309,60 +292,20 @@ function compute_model2d(extractor::OptimalExtractor, trace_image, trace_mask, s
     # Trace profile at zero point
     tpx, tpy = trace_profile.t, trace_profile.u
 
+    PA = DataInterpolations.integral(trace_profile, minimum(tpx), maximum(tpx))
+
     # Loop over cols
     for x=1:nx
 
         # Shift Trace Profile
         ymid = trace_positions(x)
-        ybottom = ymid + extract_aperture[1]
-        ytop = ymid + extract_aperture[2]
-
         P = maths.cspline_interp(tpx .+ ymid, tpy, yarr)
-        
-        # Determine which pixels to use from the aperture
-        inds_full = findall((yarr .>= ybottom + 0.5) .&& (yarr .<= ytop - 0.5))
-        if length(inds_full) <= 1
-            continue
-        end
-        ind_bottom = minimum(inds_full) - 1
-        ind_top = maximum(inds_full) + 1
-        if ind_bottom < 1 || ind_top > ny
-            continue
-        end
-        inds_all = vcat([ind_bottom], inds_full, [ind_top])
-
-        if ceil(ybottom) - ybottom > 0.5
-            frac_bottom = ceil(ybottom) - ybottom - 0.5
-        else
-            frac_bottom = ceil(ybottom) - ybottom + 0.5
-        end
-        if ytop - floor(ytop) < 0.5
-            frac_top = ytop - floor(ytop) + 0.5
-        else
-            frac_top = ytop - floor(ytop) - 0.5
-        end
-
-        P_full = @view P[inds_full]
-        P_bottom = P[ind_bottom] * frac_bottom
-        P_top = P[ind_top] * frac_top
-        P = vcat(P_bottom, P_full, P_top)
-
-        # Can't extract without full profile
-        if any(.~isfinite.(P))
-            continue
-        end
-        P ./= sum(P)
+        P ./= PA
 
         # Model
+        model2d[:, x] .= P .* spec1d[x]
         if extractor.remove_background
-            model2d[inds_all, x] .= P .* spec1d[x]
-            model2d[ind_bottom, x] /= frac_bottom
-            model2d[ind_top, x] /= frac_top
-            model2d[inds_all, x] .+= background[x]
-        else
-            model2d[inds_all, x] .= P .* spec1d[x]
-            model2d[ind_bottom, x] /= frac_bottom
-            model2d[ind_top, x] /= frac_top
+            model2d[:, x] .+= background[x]
         end
     end
 

@@ -21,7 +21,7 @@ end
 
 function gen_master_bias(bias_data::Vector)
     bias_cube = gen_image_cube(bias_data)
-    mbias = nanmedian(bias_cube, dims=1)
+    mbias = nanmedian(bias_cube, dim=1)
     return mbias
 end
 
@@ -30,11 +30,9 @@ function gen_master_dark(master_dark::MasterCal2d; master_bias=nothing)
 
     # Generate a data cube
     darks_cube = gen_image_cube(master_dark.group)
-    _, ny, nx = size(darks_cube)
 
     # Median crunch
-    mdark = nanmedian(darks_cube, dims=1)
-    mdark = reshape(mdark, (ny, nx))
+    mdark = nanmedian(darks_cube, dim=1)
 
     # Bias subtraction
     if !isnothing(master_bias)
@@ -42,7 +40,7 @@ function gen_master_dark(master_dark::MasterCal2d; master_bias=nothing)
     end
     
     # Change negative pixels to zero
-    bad = findall(mdark .< 0)
+    bad = findall(mdark .<= 0)
     mdark[bad] .= 0
 
     # Return
@@ -50,15 +48,13 @@ function gen_master_dark(master_dark::MasterCal2d; master_bias=nothing)
 end
 
 
-function gen_master_flat(master_flat::MasterCal2d; master_bias=nothing, master_dark=nothing)
+function gen_master_flat(master_flat::MasterCal2d; master_bias=nothing, master_dark=nothing, p=0.5)
    
     # Generate a data cube
     flats_cube = gen_image_cube(master_flat.group)
-    _, ny, nx = size(flats_cube)
 
     # Median crunch
-    mflat = nanmedian(flats_cube, dims=1)
-    mflat = reshape(mflat, (ny, nx))
+    mflat = nanmedian(flats_cube, dim=1)
 
     # Dark and Bias subtraction
     if !isnothing(master_bias)
@@ -69,12 +65,12 @@ function gen_master_flat(master_flat::MasterCal2d; master_bias=nothing, master_d
     end
 
     # Normalize
-    mflat ./= maths.weighted_median(mflat, p=0.5)
+    mflat ./= maths.weighted_median(mflat, p=p)
     
     # Flag obvious bad pixels
-    bad = findall((mflat .<= 0.01) .|| (mflat .> 100))
+    bad = findall(mflat .<= 0)
     mflat[bad] .= NaN
-        
+
     # Return
     return mflat
 end
@@ -104,11 +100,9 @@ function gen_master_coadded_image(master_frame::SpecData2d)
     
     # Generate a data cube
     image_cube = gen_image_cube(master_frame.group)
-    _, ny, nx = size(image_cube)
 
     # Median crunch
-    master_image = nanmedian(image_cube, dims=1)
-    master_image = reshape(master_image, (ny, nx))
+    master_image = nanmedian(image_cube, dim=1)
     
     # Flag obvious bad pixels
     bad = findall(master_image .< 0)

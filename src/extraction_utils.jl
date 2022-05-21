@@ -4,7 +4,7 @@ using EchelleBase
 using PyCall
 using NaNStatistics
 
-function estimate_snr(trace_image)
+function estimate_snr(trace_image::AbstractMatrix)
     spec1d = nansum(trace_image, dim=1)
     spec1d_smooth = nansum(maths.median_filter2d(trace_image, 5), dim=1)
     med_val = maths.weighted_median(spec1d_smooth, p=0.98)
@@ -15,7 +15,7 @@ function estimate_snr(trace_image)
     return snr
 end
 
-function refine_initial_trace_window(image, badpix_mask, sregion, trace_params; n_iterations=3)
+function refine_initial_trace_window(image::AbstractMatrix, badpix_mask::AbstractMatrix, sregion::SpecRegion2d, trace_params; n_iterations=3)
 
     # The image dimensions
     ny, nx = size(image)
@@ -70,7 +70,7 @@ function refine_initial_trace_window(image, badpix_mask, sregion, trace_params; 
 
 end
 
-function compute_trace_positions_centroids(trace_image, trace_mask, sregion, trace_positions::Polynomial, aperture; trace_pos_deg=nothing)
+function compute_trace_positions_centroids(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, sregion::SpecRegion2d, trace_positions::Polynomial, aperture; trace_pos_deg=nothing)
 
     # The image dimensions
     ny, nx = size(trace_image)
@@ -124,10 +124,10 @@ function compute_trace_positions_centroids(trace_image, trace_mask, sregion, tra
 end
 
 
-function compute_background_1d(trace_image, trace_mask, trace_positions, extract_aperture; smooth_width=nothing)
+function compute_background_1d(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, trace_positions::Polynomial, extract_aperture; smooth_width=nothing)
     ny, nx = size(trace_image)
     xarr = [1:nx;]
-    yarr = 1:ny
+    yarr = [1:ny;]
     background = fill(NaN, nx)
     for x=1:nx
         ymid = trace_positions(x)
@@ -149,7 +149,7 @@ function compute_background_1d(trace_image, trace_mask, trace_positions, extract
     return background, background_err
 end
 
-function flag_pixels2d!(trace_image, trace_mask, model2d, nσ)
+function flag_pixels2d!(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, model2d::AbstractMatrix, nσ::Real)
 
     # Smooth the 2d image to normalize residuals
     trace_image_smooth = maths.median_filter2d(trace_image, 3)
@@ -166,7 +166,7 @@ function flag_pixels2d!(trace_image, trace_mask, model2d, nσ)
 end
 
 
-function fix_bad_pixels_interp(trace_image, xmin, xmax, poly_bottom, poly_top)
+function fix_bad_pixels_interp(trace_image::AbstractMatrix, xmin, xmax, poly_bottom::Polynomial, poly_top::Polynomial)
     ny, nx = size(trace_image)
     good = findall(isfinite.(trace_image))
     bad = findall(.~isfinite.(trace_image))

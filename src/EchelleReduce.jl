@@ -2,6 +2,8 @@ module EchelleReduce
 
 using Reexport
 
+include("recipe.jl")
+
 include("tracing.jl")
 @reexport using .Tracing
 
