@@ -255,10 +255,10 @@ function optimal_extraction(trace_image::AbstractMatrix, trace_mask::AbstractMat
             end
 
             # Weights
-            #w = P.^2 .* M ./ v
-            #bad = findall(.~isfinite.(w))
-            #w[bad] .= 0
-            #w ./= sum(w)
+            w = P.^2 .* M ./ v
+            bad = findall(.~isfinite.(w))
+            w[bad] .= 0
+            w ./= sum(w)
 
             # Least squares
             #f = nansum(w .* S .* P) / nansum(w .* P.^2) # = nansum(P.^2 .* M .* S .* P ./ v) / nansum(P.^2 .* M .* P.^2)
@@ -267,6 +267,7 @@ function optimal_extraction(trace_image::AbstractMatrix, trace_mask::AbstractMat
             # Horne
             f = nansum(M .* P .* S ./ v) / nansum(M .* P.^2 ./ v)
             ferr = sqrt(nansum(M .* P) / nansum(M .* P.^2 ./ v))
+            #ferr = sqrt(nansum(w .* (S .- f .* P).^2))
 
             # Store
             spec1d[x] = f
