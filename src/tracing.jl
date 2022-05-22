@@ -7,6 +7,14 @@ using Infiltrator
 
 export trace, gen_trace_image
 
+# mutable struct TraceParams
+#     poly::Polynomial
+#     label::String
+#     fiber::Union{Int, Nothing}
+#     order::Int
+#     height::Int
+# end
+
 function trace(data::SpecData2d, sregion::SpecRegion2d; trace_pos_deg=2, min_order_spacing, xleft=nothing, xright=nothing, n_slices=20, fiber=nothing)
 
     # Load image
