@@ -207,7 +207,7 @@ function optimal_extraction(trace_image::AbstractMatrix, trace_mask::AbstractMat
             P = maths.cspline_interp(tpx .+ ymid, tpy, yarr)
             
             # Determine which pixels to use from the aperture
-            window = findall((yarr .>= ybottom - 0.5) .&& (yarr .<= ytop + 0.5))
+            window = findall((yarr .>= ybottom) .&& (yarr .<= ytop))
             if length(window) < 1
                 continue
             end
