@@ -114,6 +114,7 @@ function Extract.extract_trace(extractor::OptimalExtractor, image, sregion, trac
     spec1d, spec1derr = optimal_extraction(trace_image, trace_mask, trace_positions, trace_profile, extract_aperture, background, background_err, read_noise, 1)
 
     # Main loop
+    #@infiltrate
     for i=1:extractor.n_iterations
 
         println(" Iteration $i")
@@ -218,6 +219,112 @@ function optimal_extraction(trace_image::AbstractMatrix, trace_mask::AbstractMat
                 continue
             end
             P ./= PA
+            #P ./= nansum(P)
+
+            # Data
+            if !isnothing(background)
+                S = @views trace_image[window, x] .- background[x]
+            else
+                S = trace_image[window, x]
+            end
+
+            # Mask
+            M = trace_mask[window, x]
+
+            # Fix negative flux
+            bad = findall(S .< 0)
+            M[bad] .= 0
+            S[bad] .= NaN
+
+            # Check if column is worth extracting
+            if sum(M) <= 1
+                continue
+            end
+
+            # Variance
+            if !isnothing(background)
+                if i == 1
+                    v = read_noise^2 .+ S .+ background[x] .+ background_err[x]^2
+                else
+                    v = read_noise^2 .+ spec1d[x] .* P .+ background[x] .+ background_err[x]^2
+                end
+            else
+                if i == 1
+                    v = read_noise^2 .+ S
+                else
+                    v = read_noise^2 .+ spec1d[x] .* P
+                end
+            end
+
+            # Weights
+            w = P.^2 .* M ./ v
+            bad = findall(.~isfinite.(w))
+            w[bad] .= 0
+            w ./= sum(w)
+
+            # Least squares
+            #f = nansum(w .* S .* P) / nansum(w .* P.^2) # = nansum(P.^2 .* M .* S .* P ./ v) / nansum(P.^2 .* M .* P.^2)
+            #ferr = sqrt(nansum(M .* P) / nansum(M .* P.^2 ./ v))
+
+            # Horne
+            f = nansum(M .* P .* S ./ v) / nansum(M .* P.^2 ./ v)
+            ferr = sqrt(nansum(M .* P) / nansum(M .* P.^2 ./ v))
+            #ferr = sqrt(nansum(w .* (S .- f .* P).^2))
+
+            # Store
+            spec1d[x] = f
+            spec1derr[x] = ferr
+
+        end
+    end
+
+    return spec1d, spec1derr
+end
+
+function optimal_extraction2(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, trace_positions::Polynomials.Polynomial, trace_profile, extract_aperture, background=nothing, background_err=nothing, read_noise=0, n_iterations=1)
+
+    # Image dims
+    ny, nx = size(trace_image)
+    
+    # Helper array
+    yarr = [1:ny;]
+
+    # Outputs
+    spec1d = fill(NaN, nx)
+    spec1derr = fill(NaN, nx)
+
+    # Tpy
+    tpx, tpy = trace_profile.t, trace_profile.u
+
+    # Use a consistent normalization factor
+    PA = DataInterpolations.integral(trace_profile, minimum(tpx), maximum(tpx))
+
+    # Loop over iterations
+    for i=1:n_iterations
+
+        # Loop over cols
+        for x=1:nx
+
+            # Shift Trace Profile
+            ymid = trace_positions(x)
+            ybottom = ymid + extract_aperture[1]
+            ytop = ymid + extract_aperture[2]
+
+            P = maths.cspline_interp(tpx .+ ymid, tpy, yarr)
+            
+            # Determine which pixels to use from the aperture
+            window = findall((yarr .>= ybottom) .&& (yarr .<= ytop))
+            if length(window) < 1
+                continue
+            end
+
+            # Profile
+            P = P[window]
+            if any(.~isfinite.(P))
+                continue
+            end
+            #P ./= PA
+            P ./= nansum(P)
 
             # Data
             if !isnothing(background)
