@@ -160,7 +160,7 @@ function flag_pixels2d!(trace_image::AbstractMatrix, trace_mask::AbstractMatrix,
 
     # Flag
     use = findall(.~(norm_res .== 0) .&& (trace_mask .== 1) .&& isfinite.(norm_res))
-    σ = @views maths.robust_σ(norm_res[use], 100)
+    σ = @views maths.robust_σ(norm_res[use], nσ=100)
     bad = findall(abs.(norm_res) .> nσ * σ)
     trace_mask[bad] .= 0
     trace_image[bad] .= NaN
