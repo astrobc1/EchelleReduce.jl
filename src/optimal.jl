@@ -63,6 +63,10 @@ function Extract.extract_trace(extractor::OptimalExtractor, image, sregion, trac
         end
     end
 
+    # Mask image ends
+    trace_image[1:sregion.pixmin, :] .= NaN
+    trace_image[sregion.pixmax:end, :] .= NaN
+
     # Sync
     bad = findall(.~isfinite.(trace_image) .|| (trace_mask == 0))
     trace_image[bad] .= NaN
