@@ -64,8 +64,8 @@ function Extract.extract_trace(extractor::OptimalExtractor, image, sregion, trac
     end
 
     # Mask image ends
-    trace_image[1:sregion.pixmin, :] .= NaN
-    trace_image[sregion.pixmax:end, :] .= NaN
+    trace_image[:, 1:sregion.pixmin] .= NaN
+    trace_image[:, sregion.pixmax:end] .= NaN
 
     # Sync
     bad = findall(.~isfinite.(trace_image) .|| (trace_mask == 0))
@@ -118,7 +118,6 @@ function Extract.extract_trace(extractor::OptimalExtractor, image, sregion, trac
     spec1d, spec1derr = optimal_extraction(trace_image, trace_mask, trace_positions, trace_profile, extract_aperture, background, background_err, read_noise, 1)
 
     # Main loop
-    #@infiltrate
     for i=1:extractor.n_iterations
 
         println(" Iteration $i")
@@ -195,7 +194,7 @@ function optimal_extraction(trace_image::AbstractMatrix, trace_mask::AbstractMat
     # Tpy
     tpx, tpy = trace_profile.t, trace_profile.u
 
-    # Use a consistent normalization factor
+    # Use a consistent normalization factor to ensure P*f reproduces the data (up to noise)
     PA = DataInterpolations.integral(trace_profile, minimum(tpx), maximum(tpx))
 
     # Loop over iterations
