@@ -6,10 +6,6 @@ export plot_extracted_spectrum
 function plot_extracted_spectrum(data::SpecData2d, reduced_data::Vector, sregion::SpecRegion2d, fname::String, traces::Vector)
 
     n_traces = length(traces)
-    nx = length(reduced_data[1].spec1d)
-    
-    # The number of x pixels
-    xarr = [1:nx;]
     
     # Plot settings
     plot_width = 30
@@ -45,6 +41,11 @@ function plot_extracted_spectrum(data::SpecData2d, reduced_data::Vector, sregion
             if isnothing(reduced_data[trace_index])
                 continue
             end
+
+            nx = length(reduced_data[1].spec1d)
+    
+            # The number of x pixels
+            xarr = [1:nx;]
             
             # Views
             spec1d = reduced_data[trace_index].spec1d
