@@ -1,6 +1,5 @@
 module OptimalExtraction
 
-import DataInterpolations
 import Polynomials
 using NaNStatistics
 using Infiltrator
@@ -470,7 +469,7 @@ function compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_
     good = findall(isfinite.(trace_profile_median))
     tpx = @views yarr_hr0[good[2:end-1]]
     tpy = @view trace_profile_median[good[2:end-1]]
-    trace_profile = DataInterpolations.CubicSpline(tpy, tpx)
+    trace_profile = maths.CubicSpline(tpx, tpy)
 
     # # Center profile at zero
     # prec = 1000

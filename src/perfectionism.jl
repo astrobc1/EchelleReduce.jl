@@ -9,7 +9,6 @@ using Infiltrator
 using LinearAlgebra
 using SparseArrays
 using Arpack
-using DataInterpolations
 
 export SPExtractor
 

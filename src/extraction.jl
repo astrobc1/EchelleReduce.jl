@@ -1,13 +1,7 @@
 using Polynomials
-using PyPlot
-try
-    plt.style.use("../gadfly_stylesheet.mplstyle")
-catch
-end
 
 using EchelleBase
 using EchelleReduce
-using DataInterpolations
 
 # Functions
 # extract_image

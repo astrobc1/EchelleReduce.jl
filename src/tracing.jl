@@ -1,6 +1,6 @@
 module Tracing
 
-using NaNStatistics, Polynomials, Peaks, Statistics
+using NaNStatistics, Polynomials, Statistics
 
 using EchelleBase
 using Infiltrator
