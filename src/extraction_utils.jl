@@ -175,8 +175,8 @@ function fix_bad_pixels_interp(trace_image::AbstractMatrix, xmin, xmax, poly_bot
     trace_image_out[bad] .= 0
     xx = repeat(1:nx, outer=(1, ny))'
     yy = repeat(1:ny, outer=(1, nx))
-    x1 = @view xx[good]
-    y1 = @view yy[good]
+    x1 = xx[good]
+    y1 = yy[good]
     scipy_interp = pyimport("scipy.interpolate")
     trace_image_out .= scipy_interp.griddata((x1, y1), trace_image[good], (xx, yy), method="linear")
     yarr = 1:ny

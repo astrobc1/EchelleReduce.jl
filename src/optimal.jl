@@ -194,7 +194,8 @@ function optimal_extraction(trace_image::AbstractMatrix, trace_mask::AbstractMat
     tpx, tpy = trace_profile.t, trace_profile.u
 
     # Use a consistent normalization factor to ensure P*f reproduces the data (up to noise)
-    PA = DataInterpolations.integral(trace_profile, minimum(tpx), maximum(tpx))
+    oversample = nanmedian(diff(tpx))
+    PA = nansum(tpy) / oversample
 
     # Loop over iterations
     for i=1:n_iterations
@@ -298,8 +299,9 @@ function optimal_extraction2(trace_image::AbstractMatrix, trace_mask::AbstractMa
     # Tpy
     tpx, tpy = trace_profile.t, trace_profile.u
 
-    # Use a consistent normalization factor
-    PA = DataInterpolations.integral(trace_profile, minimum(tpx), maximum(tpx))
+    # Use a consistent normalization factor to ensure P*f reproduces the data (up to noise)
+    oversample = nanmedian(diff(tpx))
+    PA = nansum(tpy) / oversample
 
     # Loop over iterations
     for i=1:n_iterations
@@ -402,7 +404,9 @@ function compute_model2d(extractor::OptimalExtractor, trace_image::AbstractMatri
     # Trace profile at zero point
     tpx, tpy = trace_profile.t, trace_profile.u
 
-    PA = DataInterpolations.integral(trace_profile, minimum(tpx), maximum(tpx))
+    # Use a consistent normalization factor to ensure P*f reproduces the data (up to noise)
+    oversample = nanmedian(diff(tpx))
+    PA = nansum(tpy) / oversample
 
     # Loop over cols
     for x=1:nx
@@ -467,8 +471,8 @@ function compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_
 
     # Compute cubic spline for profile and ignore edge vals
     good = findall(isfinite.(trace_profile_median))
-    tpx = @views yarr_hr0[good[2:end-1]]
-    tpy = @view trace_profile_median[good[2:end-1]]
+    tpx = yarr_hr0[good[2:end-1]]
+    tpy = trace_profile_median[good[2:end-1]]
     trace_profile = maths.CubicSpline(tpx, tpy)
 
     # # Center profile at zero
