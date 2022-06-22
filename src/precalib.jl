@@ -3,9 +3,9 @@ module PreCalib
 using NaNStatistics
 using EchelleBase
 
-export gen_master_bias, gen_master_dark, gen_master_flat, gen_image_cube, pre_calibrate!, gen_master_coadded_image
+export gen_master_bias, gen_master_dark, gen_master_flat, pre_calibrate!
 
-function gen_image_cube(data::Vector)
+function gen_image_cube(data::Vector{SpecData2d{T}}) where {T}
     n_images = length(data)
     image0 = read_image(data[1])
     ny, nx = size(image0)
@@ -19,7 +19,7 @@ function gen_image_cube(data::Vector)
     return image_cube
 end
 
-function gen_master_bias(bias_data::Vector)
+function gen_master_bias(bias_data::Vector{SpecData2d{T}})
     bias_cube = gen_image_cube(bias_data)
     mbias = nanmedian(bias_cube, dim=1)
     return mbias
@@ -75,7 +75,7 @@ function gen_master_flat(master_flat::MasterCal2d; master_bias=nothing, master_d
     return mflat
 end
 
-function pre_calibrate!(image::Matrix; master_bias=nothing, master_dark=nothing, master_flat=nothing)
+function pre_calibrate!(image::AbstractMatrix; master_bias=nothing, master_dark=nothing, master_flat=nothing)
     
     # Bias correction
     if !isnothing(master_bias)
