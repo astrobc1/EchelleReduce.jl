@@ -19,11 +19,6 @@ function plot_extracted_spectrum(data::SpecData2d, reduced_data::Vector, sregion
     
     # Create a figure
     pygui(false)
-    try
-        plt.style.use((@__DIR__)[1:end-3] * "gadfly_stylesheet.mplstyle")
-    catch
-        nothing
-    end
     fig, axarr = plt.subplots(nrows=n_rows, ncols=n_cols, figsize=(plot_width, plot_height), dpi=dpi, squeeze=false)
     
     # For each subplot, plot all traces

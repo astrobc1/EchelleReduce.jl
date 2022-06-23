@@ -16,24 +16,25 @@ function estimate_snr(trace_image::AbstractMatrix)
     return snr
 end
 
-function refine_initial_trace_window(image::AbstractMatrix, badpix_mask::AbstractMatrix, sregion::SpecRegion2d, trace_params; n_iterations=3)
+function refine_trace_window(image::AbstractMatrix, badpix_mask::AbstractMatrix, sregion::SpecRegion2d, trace_positions_estimate::Polynomial; trace_pos_poly_deg=nothing, window::Vector, n_iterations=3)
 
     # The image dimensions
     ny, nx = size(image)
 
-    # Initial positions
-    trace_positions = trace_params["poly"]
-    ycen = trace_positions.(1:nx)
+    # Initial positions from polynomial
+    ycen = trace_positions_estimate.(1:nx)
+    trace_positions = deepcopy(trace_positions_estimate)
 
-    # Window to search for centroid in
-    refine_window = [-ceil(trace_params["height"] / 3), ceil(trace_params["height"] / 3)]
+    if isnothing(trace_pos_poly_deg)
+        trace_pos_poly_deg = degree(trace_positions)
+    end
 
     for i=1:n_iterations
 
         # Copy the image
         image_cp = copy(image)
 
-        # Mask image
+        # Mask image according to sregion
         mask!(image_cp, sregion)
 
         # Copy
@@ -42,8 +43,8 @@ function refine_initial_trace_window(image::AbstractMatrix, badpix_mask::Abstrac
 
         # Mask according to positions
         for x=1:nx
-            y_low = Int(floor(ycen[x] + refine_window[1]))
-            y_high = Int(ceil(ycen[x] + refine_window[2]))
+            y_low = Int(floor(ycen[x] + window[1]))
+            y_high = Int(ceil(ycen[x] + window[2]))
             if y_low >= 1 && y_low <= ny
                 trace_image[1:y_low, x] .= NaN
             else
@@ -62,7 +63,7 @@ function refine_initial_trace_window(image::AbstractMatrix, badpix_mask::Abstrac
         trace_mask[bad] .= 0
 
         # Compute centroids and polynomial fit
-        trace_positions = compute_trace_positions_centroids(trace_image, trace_mask, sregion, trace_positions, refine_window; trace_pos_deg=degree(trace_params["poly"]))
+        trace_positions = compute_trace_positions_centroids(trace_image, trace_mask, sregion, trace_positions, window; trace_pos_poly_deg=trace_pos_poly_deg)
 
     end
 
@@ -71,17 +72,13 @@ function refine_initial_trace_window(image::AbstractMatrix, badpix_mask::Abstrac
 
 end
 
-function compute_trace_positions_centroids(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, sregion::SpecRegion2d, trace_positions::Polynomial, aperture; trace_pos_deg=nothing)
+function compute_trace_positions_centroids(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, sregion::SpecRegion2d, trace_positions::Polynomial, aperture; trace_pos_poly_deg=nothing)
 
     # The image dimensions
     ny, nx = size(trace_image)
     
     # Helpful arrays
     yarr = 1:ny
-
-    if isnothing(trace_pos_deg)
-        trace_pos_deg = degree(trace_positions)
-    end
 
     # Fix nans
     trace_image, trace_mask = fix_bad_pixels_interp(trace_image, sregion.pixmin, sregion.pixmax, trace_positions + aperture[1], trace_positions + aperture[2])
@@ -118,7 +115,7 @@ function compute_trace_positions_centroids(trace_image::AbstractMatrix, trace_ma
     # Fit
     good = findall(isfinite.(ycen))
     xarr = [1:nx;]
-    trace_positions = @views Polynomials.fit(xarr[good], ycen[good], trace_pos_deg)
+    trace_positions = @views Polynomials.fit(xarr[good], ycen[good], trace_pos_poly_deg)
 
     # Return
     return trace_positions
