@@ -1,7 +1,7 @@
 using EchelleBase
 using EchelleReduce
 
-export extract_image, extract_trace, compute_model2d
+export extract_image, extract_trace, gen_model2d
 
 """
     extract_image(extractor::SpectralExtractor, data::SpecData2d, data_image::AbstractMatrix, sregion::SpecRegion2d, traces::Vector; badpix_mask::Union{AbstractMatrix, Nothing}=nothing, read_noise::Real=0)

@@ -134,7 +134,7 @@ function extract_SP2d(A, S, Ninv)
     return flux, fluxt, R
 end
 
-function Extract.compute_model2d(extractor::SPExtractor, trace_image::AbstractMatrix, trace_mask::AbstractMatrix, spec1d::AbstractVector, trace_positions::Polynomial)
+function Extract.gen_model2d(extractor::SPExtractor, trace_image::AbstractMatrix, trace_mask::AbstractMatrix, spec1d::AbstractVector, trace_positions::Polynomial)
 
     # Dims
     ny, nx = size(trace_image)
@@ -435,7 +435,7 @@ function Extract.extract_trace(extractor::SPExtractor, image::Matrix, sregion::S
 
             # 2d model
             #spec1dt_smooth = maths.median_filter1d(spec1dt, 3)
-            model2d = Extract.compute_model2d(extractor, trace_image, trace_mask, spec1dt, trace_positions)
+            model2d = Extract.gen_model2d(extractor, trace_image, trace_mask, spec1dt, trace_positions)
             #model2d_smooth = maths.median_filter2d(model2d_smooth, 3)
 
             # Flag
