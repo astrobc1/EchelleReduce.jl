@@ -1,6 +1,6 @@
 module OptimalExtraction
 
-import Polynomials
+using Polynomials
 using NaNStatistics
 using Infiltrator
 using EchelleBase
