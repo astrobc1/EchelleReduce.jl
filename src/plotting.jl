@@ -4,6 +4,10 @@ using Infiltrator
 
 export plot_extracted_spectrum
 
+"""
+    plot_extracted_spectrum(recipe::ReduceRecipe, data::SpecData2d, reduced_data::Vector, fname::String, traces::Vector)
+Plots all `reduced_data` corresponding to `traces` extracted from a full-frame image and saves the image to `fname`.
+"""
 function plot_extracted_spectrum(recipe::ReduceRecipe, data::SpecData2d, reduced_data::Vector, fname::String, traces::Vector)
 
     n_traces = length(traces)

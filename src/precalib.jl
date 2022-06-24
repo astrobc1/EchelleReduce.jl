@@ -5,6 +5,10 @@ using EchelleBase
 
 export gen_master_bias, gen_master_dark, gen_master_flat, pre_calibrate!, gen_master_coadded_image
 
+"""
+    gen_image_cube(master_dark::MasterCal2d; master_bias=nothing)
+Generate a an array of images with shape (n_images x ny x nx).
+"""
 function gen_image_cube(data::Vector{SpecData2d{T}}) where {T}
     n_images = length(data)
     image0 = read_image(data[1])
@@ -19,13 +23,10 @@ function gen_image_cube(data::Vector{SpecData2d{T}}) where {T}
     return image_cube
 end
 
-function gen_master_bias(bias_data::Vector{SpecData2d{T}}) where {T}
-    bias_cube = gen_image_cube(bias_data)
-    mbias = nanmedian(bias_cube, dim=1)
-    return mbias
-end
-
-
+"""
+    gen_master_dark(master_dark::MasterCal2d; master_bias=nothing)
+Generate the master dark image.
+"""
 function gen_master_dark(master_dark::MasterCal2d; master_bias=nothing)
 
     # Generate a data cube
@@ -47,7 +48,10 @@ function gen_master_dark(master_dark::MasterCal2d; master_bias=nothing)
     return mdark
 end
 
-
+"""
+    gen_master_flat(master_flat::MasterCal2d; master_bias=nothing, master_dark=nothing, p=0.5)
+Generate the master flat field image, normalized to p.
+"""
 function gen_master_flat(master_flat::MasterCal2d; master_bias=nothing, master_dark=nothing, p=0.5)
    
     # Generate a data cube
@@ -75,13 +79,11 @@ function gen_master_flat(master_flat::MasterCal2d; master_bias=nothing, master_d
     return mflat
 end
 
-function pre_calibrate!(image::AbstractMatrix; master_bias=nothing, master_dark=nothing, master_flat=nothing)
-    
-    # Bias correction
-    if !isnothing(master_bias)
-        mbias = read_image(master_bias)
-        image .-= mbias
-    end
+"""
+    pre_calibrate!(image::AbstractMatrix; master_dark=nothing, master_flat=nothing)
+Pre-calibrate an image according to the master dark and flat.
+"""
+function pre_calibrate!(image::AbstractMatrix; master_dark=nothing, master_flat=nothing)
         
     # Dark correction
     if !isnothing(master_dark)
@@ -96,6 +98,10 @@ function pre_calibrate!(image::AbstractMatrix; master_bias=nothing, master_dark=
     end
 end
 
+"""
+    gen_master_coadded_image(master_frame::SpecData2d)
+Co-adds frames.
+"""
 function gen_master_coadded_image(master_frame::SpecData2d)
     
     # Generate a data cube

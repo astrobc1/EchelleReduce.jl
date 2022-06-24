@@ -18,11 +18,27 @@ struct EmpiricalOptimalExtractor{A<:Union{Symbol, Vector{Int}}} <: SpectralExtra
     extract_aperture::A
 end
 
+
+"""
+    EmpiricalOptimalExtractor(;max_iterations=20, remove_background=false, background_smooth_width=0, oversample_profile=8, trace_pos_poly_deg=4, badpix_σ=6, extract_aperture=:auto)
+Construct an EmpiricalOptimalExtractor object with the following parameters.
+- `max_iterations`: The maximum number of iterations to run. In each iteration, the trace positions, profile, and bad pixel variables are updated. Convergence is reached when no more bad pixels are found.
+- `remove_background`: Whether or not to estimate and remove a background
+- `background_smooth_width`: The rolling window size to smooth the background with. Ignored if remove_background is false.
+- `oversample_profile`: Integer oversample factor for the trace profile cubic spline.
+- `trace_pos_poly_deg`: Polynomial degree for the trace positions, determined from a polynomial fit to the centroids of detector columns.
+- `badpix_σ`: Deviations larger than `badpix_σ` are flagged after extraction.
+- `extract_aperture`: The aperture window to consider in extraction. Note that the background will only utilize pixels outside this window. Alternatively, :auto can be passed to automatically determine an optimal window from the profile.
+"""
 function EmpiricalOptimalExtractor(;max_iterations=20, remove_background=false, background_smooth_width=0, oversample_profile=8, trace_pos_poly_deg=4, badpix_σ=6, extract_aperture=:auto)
     return EmpiricalOptimalExtractor(max_iterations, remove_background, background_smooth_width, oversample_profile, trace_pos_poly_deg, float(badpix_σ), extract_aperture)
 end
 
-function Extract.extract_trace(extractor::EmpiricalOptimalExtractor, image, sregion, trace_params; badpix_mask=nothing, read_noise=0.0)
+"""
+    extract_trace(extractor::EmpiricalOptimalExtractor, image::AbstractMatrix, sregion::SpecRegion2d, initial_trace_positions::Polynomial, trace_height::Real; badpix_mask=nothing, read_noise::Real=0.0)
+Extract a trace from `image` using the EmpiricalOptimalExtractor algorithm. An initial bad pixel mask may also be passed.
+"""
+function Extract.extract_trace(extractor::EmpiricalOptimalExtractor, image::AbstractMatrix, sregion::SpecRegion2d, initial_trace_positions::Polynomial, trace_height::Real; badpix_mask=nothing, read_noise::Real=0.0)
 
     # Copy image
     image = copy(image)
@@ -38,16 +54,16 @@ function Extract.extract_trace(extractor::EmpiricalOptimalExtractor, image, sreg
     end
 
     # Refine initial window
-    trace_positions = Extract.refine_trace_window(image, badpix_mask, sregion, trace_params["poly"],
-                                                  window=[-trace_params["height"] / 2.5, trace_params["height"] / 2.5], n_iterations=3)
+    trace_positions = Extract.refine_trace_window(image, badpix_mask, sregion, initial_trace_positions,
+                                                  window=[-trace_height / 2.5, trace_height / 2.5], n_iterations=3)
 
     # Mask image based on trace aperture
     trace_image = copy(image)
     trace_mask = copy(badpix_mask)
     for x=1:nx
         ymid = trace_positions(x)
-        y_low = Int(floor(ymid - trace_params["height"] / 2))
-        y_high = Int(ceil(ymid + trace_params["height"] / 2))
+        y_low = Int(floor(ymid - trace_height / 2))
+        y_high = Int(ceil(ymid + trace_height / 2))
         if y_low > 1 && y_low < ny
             trace_image[1:y_low-1, x] .= NaN
         else
@@ -93,10 +109,10 @@ function Extract.extract_trace(extractor::EmpiricalOptimalExtractor, image, sreg
         background, background_err = nothing, nothing
     end
 
-    trace_positions = Extract.compute_trace_positions_centroids(trace_image, trace_mask, sregion, trace_positions, [-trace_params["height"] / 3, trace_params["height"] / 3]; trace_pos_poly_deg=extractor.trace_pos_poly_deg)
+    trace_positions = Extract.compute_trace_positions_centroids(trace_image, trace_mask, sregion, trace_positions, [-trace_height / 3, trace_height / 3]; trace_pos_poly_deg=extractor.trace_pos_poly_deg)
 
     # Starting trace profile
-    trace_profile = compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_positions, background=background, oversample=extractor.oversample_profile, aperture=[-trace_params["height"] / 3, trace_params["height"] / 3])
+    trace_profile = compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_positions, background=background, oversample=extractor.oversample_profile, aperture=[-trace_height / 3, trace_height / 3])
 
     # Extract Aperture
     if extractor.extract_aperture == :auto
@@ -118,7 +134,7 @@ function Extract.extract_trace(extractor::EmpiricalOptimalExtractor, image, sreg
         trace_positions = Extract.compute_trace_positions_centroids(trace_image, trace_mask, sregion, trace_positions, extract_aperture; trace_pos_poly_deg=extractor.trace_pos_poly_deg)
 
         # Update trace profile with new positions and mask
-        trace_profile = compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_positions, background=background, oversample=extractor.oversample_profile, aperture=[-ceil(trace_params["height"] / 2), ceil(trace_params["height"] / 2)])
+        trace_profile = compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_positions, background=background, oversample=extractor.oversample_profile, aperture=[-ceil(trace_height / 2), ceil(trace_height / 2)])
 
         # Extract Aperture
         if extractor.extract_aperture == :auto
@@ -140,7 +156,7 @@ function Extract.extract_trace(extractor::EmpiricalOptimalExtractor, image, sreg
 
             # 2d model
             spec1d_smooth = maths.median_filter1d(spec1d, 3)
-            model2d_smooth = compute_model2d(extractor, trace_image, trace_mask, spec1d_smooth, trace_profile, trace_positions, extract_aperture, background)
+            model2d_smooth = gen_model2d(extractor, trace_image, trace_mask, spec1d_smooth, trace_profile, trace_positions, extract_aperture, background)
             model2d_smooth = maths.median_filter2d(model2d_smooth, 3)
 
             # Flag
@@ -165,7 +181,10 @@ function Extract.extract_trace(extractor::EmpiricalOptimalExtractor, image, sreg
     return (;spec1d=spec1d, spec1derr=spec1derr, spec1dmask=spec1dmask, trace_profile=trace_profile, trace_positions=trace_positions)
 end
 
-
+"""
+    optimal_extraction(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, trace_positions::Polynomials.Polynomial, trace_profile, extract_aperture, background=nothing, background_err=nothing, read_noise=0, max_iterations=20)
+Perform optimal extraction as described in Horne et al. 1985.
+"""
 function optimal_extraction(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, trace_positions::Polynomials.Polynomial, trace_profile, extract_aperture, background=nothing, background_err=nothing, read_noise=0, max_iterations=20)
 
     # Image dims
@@ -272,7 +291,11 @@ function optimal_extraction(trace_image::AbstractMatrix, trace_mask::AbstractMat
     return spec1d, spec1derr
 end
 
-function compute_model2d(extractor::EmpiricalOptimalExtractor, trace_image::AbstractMatrix, trace_mask::AbstractMatrix, spec1d, trace_profile, trace_positions, extract_aperture, background=nothing)
+"""
+    gen_model2d(extractor::EmpiricalOptimalExtractor, trace_image::AbstractMatrix, trace_mask::AbstractMatrix, spec1d, trace_profile, trace_positions, extract_aperture, background=nothing)
+Generates the 2d model from the extracted spectrum by reconvolving it according to the trace profile.
+"""
+function gen_model2d(extractor::EmpiricalOptimalExtractor, trace_image::AbstractMatrix, trace_mask::AbstractMatrix, spec1d, trace_profile, trace_positions, extract_aperture, background=nothing)
 
     # Dims
     ny, nx = size(trace_image)
@@ -309,6 +332,10 @@ function compute_model2d(extractor::EmpiricalOptimalExtractor, trace_image::Abst
     return model2d
 end
 
+"""
+    compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_positions; aperture, spec1d=nothing, background=nothing, oversample=1)
+Computes the 1d (purely vertical) trace profile as a cubic spline. The profile is assumed to be monochromatic.
+"""
 function compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_positions; aperture, spec1d=nothing, background=nothing, oversample=1)
         
     # Image dims
@@ -385,19 +412,19 @@ function get_vertical_extract_aperture(trace_profile)
     return extract_aperture
 end
 
-function get_chunks(xi, xf, chunk_width, chunk_overlap=0.75)
-    nx = xf - xi + 1
-    chunks = []
-    push!(chunks, (xi, xi + chunk_width))
-    for i=2:Int(2 * ceil(nx / chunk_width))
-        vi = chunks[i-1][2] - Int(floor(chunk_width * chunk_overlap))
-        vf = min(vi + chunk_width, xf)
-        push!(chunks, (vi, vf))
-        if vf == xf
-            break
-        end
-    end
-    return chunks
-end
+# function get_chunks(xi, xf, chunk_width, chunk_overlap=0.75)
+#     nx = xf - xi + 1
+#     chunks = []
+#     push!(chunks, (xi, xi + chunk_width))
+#     for i=2:Int(2 * ceil(nx / chunk_width))
+#         vi = chunks[i-1][2] - Int(floor(chunk_width * chunk_overlap))
+#         vf = min(vi + chunk_width, xf)
+#         push!(chunks, (vi, vf))
+#         if vf == xf
+#             break
+#         end
+#     end
+#     return chunks
+# end
 
 end

@@ -6,6 +6,11 @@ using Infiltrator
 using Polynomials
 using NaNStatistics
 
+
+"""
+    estimate_snr(trace_image::AbstractMatrix)
+Crude method to estimate the mean S/N.
+"""
 function estimate_snr(trace_image::AbstractMatrix)
     spec1d = nansum(trace_image, dim=1)
     spec1d_smooth = nansum(maths.median_filter2d(trace_image, 5), dim=1)
@@ -17,6 +22,11 @@ function estimate_snr(trace_image::AbstractMatrix)
     return snr
 end
 
+
+"""
+    refine_trace_window(image::AbstractMatrix, badpix_mask::AbstractMatrix, sregion::SpecRegion2d, trace_positions_estimate::Polynomial; trace_pos_poly_deg=nothing, window::Vector, n_iterations=3)
+Iteratively refines the initial trace window using the centroids of each column.
+"""
 function refine_trace_window(image::AbstractMatrix, badpix_mask::AbstractMatrix, sregion::SpecRegion2d, trace_positions_estimate::Polynomial; trace_pos_poly_deg=nothing, window::Vector, n_iterations=3)
 
     # The image dimensions
@@ -73,6 +83,10 @@ function refine_trace_window(image::AbstractMatrix, badpix_mask::AbstractMatrix,
 
 end
 
+"""
+    compute_trace_positions_centroids(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, sregion::SpecRegion2d, trace_positions::Polynomial, aperture; trace_pos_poly_deg=nothing)
+Compute the trace positions by fitting a polynomial to the column centroids.
+"""
 function compute_trace_positions_centroids(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, sregion::SpecRegion2d, trace_positions::Polynomial, aperture; trace_pos_poly_deg=nothing)
 
     # The image dimensions
@@ -122,7 +136,10 @@ function compute_trace_positions_centroids(trace_image::AbstractMatrix, trace_ma
     return trace_positions
 end
 
-
+"""
+    compute_background_1d(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, trace_positions::Polynomial, extract_aperture; smooth_width=nothing)
+Estimates the background signal by considering regions of low flux according to the provided `extract_aperture`.
+"""
 function compute_background_1d(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, trace_positions::Polynomial, extract_aperture; smooth_width=nothing)
     ny, nx = size(trace_image)
     xarr = [1:nx;]
@@ -148,6 +165,10 @@ function compute_background_1d(trace_image::AbstractMatrix, trace_mask::Abstract
     return background, background_err
 end
 
+"""
+    flag_pixels2d!(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, model2d::AbstractMatrix, nσ::Real)
+Flags bad pixels in the 2d image by looking at outliers in the residuals.
+"""
 function flag_pixels2d!(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, model2d::AbstractMatrix, nσ::Real)
 
     # Smooth the 2d image to normalize residuals
@@ -164,7 +185,10 @@ function flag_pixels2d!(trace_image::AbstractMatrix, trace_mask::AbstractMatrix,
     trace_image[bad] .= NaN
 end
 
-
+"""
+    fix_bad_pixels_interp(trace_image::AbstractMatrix, xmin, xmax, poly_bottom::Polynomial, poly_top::Polynomial)
+Utility function to fix bad pixels in an image with linear interpolation.
+"""
 function fix_bad_pixels_interp(trace_image::AbstractMatrix, xmin, xmax, poly_bottom::Polynomial, poly_top::Polynomial)
     ny, nx = size(trace_image)
     good = findall(isfinite.(trace_image))

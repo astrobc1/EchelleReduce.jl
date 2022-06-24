@@ -3,6 +3,10 @@ using EchelleReduce
 
 export extract_image, extract_trace, compute_model2d
 
+"""
+    extract_image(extractor::SpectralExtractor, data::SpecData2d, data_image::AbstractMatrix, sregion::SpecRegion2d, traces::Vector; badpix_mask::Union{AbstractMatrix, Nothing}=nothing, read_noise::Real=0)
+Primary method to extract all orders from an image.
+"""
 function extract_image(extractor::SpectralExtractor, data::SpecData2d, data_image::AbstractMatrix, sregion::SpecRegion2d, traces::Vector; badpix_mask::Union{AbstractMatrix, Nothing}=nothing, read_noise::Real=0)
     
     # Store reduced data
@@ -27,5 +31,14 @@ function extract_image(extractor::SpectralExtractor, data::SpecData2d, data_imag
 end
 
 
+"""
+    extract_trace
+Primary method to extract a single trace. Must be implemented.
+"""
 function extract_trace end
-function compute_model2d end
+
+"""
+    extract_trace
+Primary method to generate a 2d model. Must be implemented.
+"""
+function gen_model2d end
