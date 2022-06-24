@@ -3,6 +3,7 @@ using EchelleBase
 
 using PyCall
 using Infiltrator
+using Polynomials
 using NaNStatistics
 
 function estimate_snr(trace_image::AbstractMatrix)
