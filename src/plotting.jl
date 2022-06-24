@@ -1,9 +1,10 @@
 using PyPlot
 using EchelleBase
+using Infiltrator
 
 export plot_extracted_spectrum
 
-function plot_extracted_spectrum(data::SpecData2d, reduced_data::Vector, sregion::SpecRegion2d, fname::String, traces::Vector)
+function plot_extracted_spectrum(recipe::ReduceRecipe, data::SpecData2d, reduced_data::Vector, fname::String, traces::Vector)
 
     n_traces = length(traces)
     

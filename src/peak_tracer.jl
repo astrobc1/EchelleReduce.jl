@@ -1,13 +1,29 @@
 using NaNStatistics, Polynomials
 
+"""
+    trace(data::SpecData2d, sregion::SpecRegion2d; trace_pos_deg=2, min_order_spacing::Int, xleft=nothing, xright=nothing, n_slices=20, fiber=nothing)
+Util peaks within a given vector together
+- `data` The data 
+- `traces` The vector of trace parameters (dictionaries)
+- `ny`. The number of vertical pixels.
+- `nx`. The number of horizontal pixels.
+- `sregion`. The spectral region to further bound the left and right ends of the image.
+"""
 function trace(data::SpecData2d, sregion::SpecRegion2d; trace_pos_deg=2, min_order_spacing::Int, xleft=nothing, xright=nothing, n_slices=20, fiber=nothing)
     data_image = read_image(data)
     return trace(data, data_image, sregion; trace_pos_deg=trace_pos_deg, min_order_spacing=min_order_spacing, xleft=xleft, xright=xright, n_slices=n_slices, fiber=fiber)
 end
+"""
+    trace(data::SpecData2d, sregion::SpecRegion2d; trace_pos_deg=2, min_order_spacing::Int, xleft=nothing, xright=nothing, n_slices=20, fiber=nothing)
+Util peaks within a given vector together
+- `data` The data 
+- `data_image`
+- `traces` The vector of trace parameters (dictionaries)
+- `ny`. The number of vertical pixels.
+- `nx`. The number of horizontal pixels.
+- `sregion`. The spectral region to further bound the left and right ends of the image.
+"""
 function trace(data::SpecData2d, data_image::AbstractMatrix, sregion::SpecRegion2d; trace_pos_deg=2, min_order_spacing::Int, xleft=nothing, xright=nothing, n_slices=20, fiber=nothing)
-
-    # Copy
-    data_image = copy(data_image)
 
     # dims
     ny, nx = size(data_image)

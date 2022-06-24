@@ -1,13 +1,20 @@
 module Tracing
 
 using Statistics
-
 using EchelleBase
 
 export trace
 
 function trace end
 
+"""
+    gen_trace_image(traces::Vector, ny, nx, sregion::SpecRegion2d)
+Generate an nx x ny image with values according to the labels in each trace dictionary.
+- `traces` The vector of trace parameters (dictionaries)
+- `ny`. The number of vertical pixels.
+- `nx`. The number of horizontal pixels.
+- `sregion`. The spectral region to further bound the left and right ends of the image.
+"""
 function gen_trace_image(traces::Vector, ny, nx, sregion::SpecRegion2d)
 
     # Initiate order image
@@ -35,6 +42,7 @@ function gen_trace_image(traces::Vector, ny, nx, sregion::SpecRegion2d)
     # Return
     return order_image
 end
+
 
 function group_peaks(x; sep)
     peak_centers = Float64[]
