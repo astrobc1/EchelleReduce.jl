@@ -7,11 +7,11 @@ function reduce end
 """
     reduce(recipe::ReduceRecipe)
 Perform reduction steps according to the recipe. The default steps are:
-`create_output_dirs(recipe)`
-`data = initialize_data(recipe)`
-`gen_master_calib_images(recipe, data)`
-`traces = get_traces(recipe, data)`
-`extract(recipe, data, traces, sregions)`
+1. `create_output_dirs(recipe)`
+2. `data = initialize_data(recipe)`
+3. `gen_master_calib_images(recipe, data)`
+4. `traces, sregions = get_traces(recipe, data)`
+5. `extract(recipe, data, traces, sregions)`
 """
 function reduce(recipe::ReduceRecipe)
     create_output_dirs(recipe)
@@ -60,13 +60,13 @@ Method intended to get the appropriate vector of trace params. Must be implement
 function get_traces end
 
 """
-    get_specregion2d
+get_trace_spacing
 Returns the minimum trace spacing.
 """
 function get_trace_spacing end
 
 """
-    get_specregion2d
+get_trace_height
 Returns the maximum trace height.
 """
 function get_trace_height end

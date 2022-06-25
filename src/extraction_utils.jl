@@ -171,18 +171,15 @@ Flags bad pixels in the 2d image by looking at outliers in the residuals.
 """
 function flag_pixels2d!(trace_image::AbstractMatrix, trace_mask::AbstractMatrix, model2d::AbstractMatrix, nσ::Real)
 
-    # Smooth the 2d image to normalize residuals
-    trace_image_smooth = maths.median_filter2d(trace_image, 3)
-
     # Normalized residuals
-    norm_res = (trace_image .- model2d) ./ sqrt.(trace_image_smooth)
+    norm_res = trace_mask .* (trace_image .- model2d) ./ sqrt.(model2d)
 
     # Flag
-    use = findall(.~(norm_res .== 0) .&& (trace_mask .== 1) .&& isfinite.(norm_res))
-    σ = @views maths.robust_σ(norm_res[use], nσ=100)
-    bad = findall(abs.(norm_res) .> nσ * σ)
-    trace_mask[bad] .= 0
+    use = findall(.~(norm_res .== 0) .&& isfinite.(norm_res))
+    rms = @views sqrt(nansum(norm_res[use].^2) / length(use))
+    bad = findall(abs.(norm_res) .> nσ * rms)
     trace_image[bad] .= NaN
+    trace_mask[bad] .= 0
 end
 
 """

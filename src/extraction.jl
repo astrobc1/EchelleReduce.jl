@@ -18,7 +18,7 @@ function extract_image(extractor::SpectralExtractor, data::SpecData2d, data_imag
         println("[$(data)] Extracting Trace $(trace_params["label"])")
         #try
             ti = time()
-            result = extract_trace(extractor, data_image, sregion, trace_params, badpix_mask=badpix_mask, read_noise=read_noise)
+            result = extract_trace(extractor, data_image, sregion, trace_params["poly"], trace_params["height"], badpix_mask=badpix_mask, read_noise=read_noise)
             push!(reduced_data, result)
             println("[$(data)] Extracted Trace $(trace_params["label"]) in $(round((time() - ti)/ 60, sigdigits=3)) min")
         #catch

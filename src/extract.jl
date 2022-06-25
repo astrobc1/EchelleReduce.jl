@@ -4,6 +4,10 @@ using Reexport
 
 export SpectralExtractor
 
+"""
+    SpectralExtractor
+The base type for a spectral extraction algorithm.
+"""
 abstract type SpectralExtractor end
 
 include("extraction.jl")

@@ -155,9 +155,11 @@ function Extract.extract_trace(extractor::EmpiricalOptimalExtractor, image::Abst
         if i < extractor.max_iterations
 
             # 2d model
-            spec1d_smooth = maths.median_filter1d(spec1d, 3)
-            model2d_smooth = gen_model2d(extractor, trace_image, trace_mask, spec1d_smooth, trace_profile, trace_positions, extract_aperture, background)
-            model2d_smooth = maths.median_filter2d(model2d_smooth, 3)
+            #spec1d_smooth = maths.median_filter1d(spec1d, 3)
+            trace_image_smooth = maths.median_filter2d(trace_image, 3)
+            trace_image_smooth, _ = Extract.fix_bad_pixels_interp(trace_image::AbstractMatrix, sregion.pixmin, sregion.pixmax, trace_positions .- trace_height, trace_positions .+ trace_height)
+            spec1d_smooth, _ = optimal_extraction(trace_image, trace_mask, trace_positions, trace_profile, extract_aperture, background, background_err, read_noise, 1)
+            model2d_smooth = gen_model2d(extractor, trace_image_smooth, trace_mask, spec1d_smooth, trace_profile, trace_positions, extract_aperture, background)
 
             # Flag
             n_bad_current = sum(trace_mask)
@@ -376,12 +378,16 @@ function compute_vertical_trace_profile(trace_image, trace_mask, sregion, trace_
     end
     
     # Compute trace profile
+    n_pix_per_row = [length(findall(isfinite.(@view trace_image_rect_norm[y, :]))) for y=1:length(yarr_hr0)]
+    bad = findall(n_pix_per_row .< 0.2 * nanmaximum(n_pix_per_row))
+    trace_image_rect_norm[bad, :] .= NaN
     trace_profile_median = nanmedian(trace_image_rect_norm, dim=2)
 
     # Compute cubic spline for profile and ignore edge vals
     good = findall(isfinite.(trace_profile_median))
     tpx = yarr_hr0[good[2:end-1]]
     tpy = trace_profile_median[good[2:end-1]]
+    tpy ./= nansum(tpy) / oversample
     trace_profile = maths.CubicSpline(tpx, tpy)
 
     # Return
