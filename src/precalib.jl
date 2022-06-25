@@ -33,6 +33,7 @@ function gen_master_dark(master_dark::MasterCal2d; master_bias=nothing)
     darks_cube = gen_image_cube(master_dark.group)
 
     # Median crunch
+    @infiltrate
     mdark = nanmedian(darks_cube, dim=1)
 
     # Bias subtraction
