@@ -2,6 +2,7 @@ module PreCalib
 
 using NaNStatistics
 using EchelleBase
+using Infiltrator
 
 export gen_master_bias, gen_master_dark, gen_master_flat, pre_calibrate!, gen_master_coadded_image
 
