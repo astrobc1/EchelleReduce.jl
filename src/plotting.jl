@@ -42,7 +42,7 @@ function plot_extracted_spectrum(recipe::ReduceRecipe, data::SpecData2d, reduced
                 continue
             end
 
-            nx = length(reduced_data[1].spec1d)
+            nx = length(reduced_data[trace_index].spec1d)
     
             # The number of x pixels
             xarr = [1:nx;]
