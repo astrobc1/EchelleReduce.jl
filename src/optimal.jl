@@ -155,14 +155,15 @@ function Extract.extract_trace(extractor::EmpiricalOptimalExtractor, image::Abst
         if i < extractor.max_iterations
 
             # 2d model
-            #spec1d_smooth = maths.median_filter1d(spec1d, 3)
-            trace_image_smooth = maths.median_filter2d(trace_image, 3)
-            trace_image_smooth, _ = Extract.fix_bad_pixels_interp(trace_image::AbstractMatrix, sregion.pixmin, sregion.pixmax, trace_positions .- trace_height, trace_positions .+ trace_height)
-            spec1d_smooth, _ = optimal_extraction(trace_image, trace_mask, trace_positions, trace_profile, extract_aperture, background, background_err, read_noise, 1)
-            model2d_smooth = gen_model2d(extractor, trace_image_smooth, trace_mask, spec1d_smooth, trace_profile, trace_positions, extract_aperture, background)
+            spec1d_smooth = maths.median_filter1d(spec1d, 3)
+            #trace_image_smooth = maths.median_filter2d(trace_image, 3)
+            #trace_image_smooth, _ = Extract.fix_bad_pixels_interp(trace_image::AbstractMatrix, sregion.pixmin, sregion.pixmax, trace_positions .- trace_height, trace_positions .+ trace_height)
+            #spec1d_smooth, _ = optimal_extraction(trace_image, trace_mask, trace_positions, trace_profile, extract_aperture, background, background_err, read_noise, 1)
+            model2d_smooth = gen_model2d(extractor, trace_image, trace_mask, spec1d_smooth, trace_profile, trace_positions, extract_aperture, background)
 
             # Flag
             n_bad_current = sum(trace_mask)
+            #@infiltrate
             Extract.flag_pixels2d!(trace_image, trace_mask, model2d_smooth, extractor.badpix_σ)
             n_bad_new = sum(trace_mask)
             
