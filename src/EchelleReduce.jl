@@ -10,8 +10,6 @@ using SpecialFunctions
 using Dierckx
 using Polynomials
 
-using Pkg
-Pkg.develop(path="/Users/cale/Codes/JuliaProjects/Echelle/")
 using Echelle
 
 include("utils.jl")
