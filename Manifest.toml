@@ -305,7 +305,9 @@ version = "0.6.8"
 
 [[deps.Echelle]]
 deps = ["AstroLib", "DataInterpolations", "FITSIO", "ImageFiltering", "NaNStatistics", "Polynomials", "PyCall", "SkyCoords", "Statistics", "StatsBase"]
-path = "/Users/cale/Codes/JuliaProjects/Echelle/"
+git-tree-sha1 = "55358d2430c32dfb4985bd38f030db0ac31cd2de"
+repo-rev = "master"
+repo-url = "https://github.com/astrobc1/Echelle.jl"
 uuid = "0452828c-43f4-4a88-ad3b-1639e58135de"
 version = "0.1.0"
 
