@@ -67,6 +67,8 @@ function extract_trace_optimal(
         badpix_nσ::Real=8
     )
 
+    #Main.infiltrate(@__MODULE__, Base.@locals, @__FILE__, @__LINE__)
+
     @assert max_iterations > 0
 
     # Copy image
@@ -92,10 +94,7 @@ function extract_trace_optimal(
 
     # Initial background
     if remove_background
-        image_smooth = quantile_filter(image_rep, window=(3, 3))
-        background = nanminimum(image_smooth, dim=1)
-        background = quantile_filter(background, window=5)
-        background_err = sqrt.(background)
+        background, background_err = estimate_background(image_rep)
         image_rep_nobg = image_rep .- transpose(background)
     else
         background, background_err = nothing, nothing
@@ -151,7 +150,7 @@ function extract_trace_optimal(
 
     end
 
-    # Get P
+    # Profile
     profile = eval_profile(image, yc, _spl; xrange, yrange)
 
     # Main loop
@@ -159,6 +158,49 @@ function extract_trace_optimal(
 
         # Print
         println("Iteration $i")
+
+        # Repair the image
+        if !isnothing(trace_pos_deg) || isnothing(spl) || remove_background
+            image_rep = repair_bad_pix2d(image, yc; xrange, yrange)
+        else
+            image_rep = image
+        end
+
+        # New positions
+        if !isnothing(trace_pos_deg)
+            yc = get_trace_positions_centroids(image_rep, yc; xrange, yrange, deg=trace_pos_deg)
+        end
+
+        # Get profile from positions
+        if isnothing(spl)
+            _spl = get_profile_spline(
+                image_rep .- transpose(background), yc, xrange, yrange;
+                knot_spacing_x=profile_knot_spacing_x, knot_spacing_y=profile_knot_spacing_y,
+                deg_x=profile_deg_x, deg_y=profile_deg_y
+            )
+            profile = eval_profile(image, yc, _spl; xrange, yrange)
+        else
+            _spl = spl
+        end
+
+        # Get aperture
+        if isnothing(yrange_extract)
+            _yrange_extract = get_extract_aperture(image, _spl; xrange, yrange, thresh=yrange_extract_thresh)
+        else
+            _yrange_extract = copy(yrange_extract)
+        end
+
+        # New background
+        if remove_background
+            background, background_err = compute_slit_background1d(image_rep, yc; xrange, yrange=_yrange_extract)
+            if background_smooth_width > 0
+                if !isodd(background_smooth_width)
+                    background_smooth_width += 1
+                end
+                background .= quantile_filter(background, window=background_smooth_width)
+                background_err .= quantile_filter(background_err, window=background_smooth_width)
+            end
+        end
 
         # Do extraction
         spec1d, specerr1d = optimal_extraction(image, yc, profile; background, background_err, xrange, yrange=_yrange_extract, read_noise, n_iterations=3)
@@ -170,7 +212,7 @@ function extract_trace_optimal(
             spec1d_smooth = quantile_filter(spec1d, window=3)
 
             # Reconvolve image into 2D space
-            model_image_smooth = gen_model_image_background(image, spec1d_smooth, yc, profile; background, xrange, yrange, yrange_extract=_yrange_extract)
+            model_image_smooth = gen_model_image(image, spec1d_smooth, yc, profile; background, xrange, yrange, yrange_extract=_yrange_extract)
 
             # Current number of bad pixels
             n_bad_current = sum(isfinite.(image))
@@ -194,7 +236,7 @@ function extract_trace_optimal(
     specerr1d[bad] .= NaN
 
     # Generate the final 2D model
-    model_image = gen_model_image_background(image, spec1d, yc, profile; background, xrange, yrange, yrange_extract=_yrange_extract)
+    model_image = gen_model_image(image, spec1d, yc, profile; background, xrange, yrange, yrange_extract=_yrange_extract)
 
     # Residuals
     residuals = image .- model_image
@@ -209,7 +251,7 @@ end
 
 
 # Make a model image
-function gen_model_image_background(image::Matrix{<:Real}, spec1d::Vector{Float64}, yc::Vector{<:Real}, profile::Matrix{<:Real}; xrange::Vector{Int}, yrange::Vector{<:Real}, yrange_extract::Vector{<:Real}, background::Union{Vector{<:Real}, Nothing}=nothing)
+function gen_model_image(image::Matrix{<:Real}, spec1d::Vector{Float64}, yc::Vector{<:Real}, profile::Matrix{<:Real}; xrange::Vector{Int}, yrange::Vector{<:Real}, yrange_extract::Vector{<:Real}, background::Union{Vector{<:Real}, Nothing}=nothing)
 
     # Dims
     ny, nx = size(image)
@@ -220,34 +262,27 @@ function gen_model_image_background(image::Matrix{<:Real}, spec1d::Vector{Float6
     # Loop over cols
     for x=1:nx
 
-        # Centroid, lower, upper bound
-        ymid = yc[x]
-        ybottom = ymid + yrange[1]
-        ytop = ymid + yrange[2]
-        if ybottom < 1 || ytop > ny
-            continue
-        end
-        ybottom_extract = ymid + yrange_extract[1]
-        ytop_extract = ymid + yrange_extract[2]
-
-        # Determine which pixels to use from the aperture in the fit
-        window = Int(round(ybottom)):Int(ceil(ytop - 0.5))
-        window_extract = Int(round(ybottom_extract)):Int(ceil(ytop_extract - 0.5))
-        if window[1] < 1 || window[end] > ny
+        # Full window
+        window_full = Int(floor(yc[x] + yrange[1])):Int(ceil(yc[x] + yrange[2]))
+        if window_full[1] < 1 || window_full[end] > ny
             continue
         end
 
-        # Shift and normalize trace profile
+        # Pixel fractions
+        fracs, ki, kf = get_pixel_fracs(profile[:, x], yc[x], yrange_extract)
+        if ki < 1 || kf > ny
+            continue
+        end
+        window_extract = ki:kf
         P = profile[window_extract, x]
-        if any(.~isfinite.(P) .|| P .< 0)
-            continue
-        end
+        PP = @views fracs[window_extract] .* P
         P ./= sum(P)
+        PP ./= sum(PP)
 
         # Reconvolve
-        model_image[window_extract, x] .= spec1d[x] .* P
+        model_image[window_extract, x] .= spec1d[x] .* PP ./ view(fracs, window_extract)
         if !isnothing(background)
-            model_image[window, x] .+= background[x]
+            model_image[window_full, x] .+= background[x]
         end
 
     end
@@ -273,11 +308,6 @@ function get_extract_aperture(image::Matrix{<:Real}, spl; xrange::Vector{Int}, y
     σ = sqrt(nansum(Pmed .* yarr0.^2) / nansum(Pmed))
     yi, yf = -thresh * σ, thresh * σ
     yi, yf = max(yi, yrange[1]), min(yf, yrange[2])
-    #good_left = findall(yarr0 .< 0 .&& Pmed .> thresh)
-    #good_right = findall(yarr0 .> 0 .&& Pmed .> thresh)
-    #yi = length(good_left) == 0 ? yarr0[good_left[1]] : yarr0[1]
-    #yf = length(good_right) == 0 ? yarr0[good_right[end]] : yarr0[end]
-    #yi, yf = max(yi, yrange[1]), min(yf, yrange[2])
     return [yi, yf]
 end
 
@@ -304,18 +334,20 @@ function optimal_extraction(
         # Loop over cols
         for x=xrange[1]:xrange[2]
 
-            # Middle, lower, upper bound
-            ymid = yc[x]
-            ybottom = ymid + yrange[1]
-            ytop = ymid + yrange[2]
-
-            # Continue if out of frame
-            if ybottom < 1 || ytop > ny
+            if floor(yc[x] + yrange[1] - 1) < 1 || ceil(yc[x] + yrange[2] + 1) > ny
                 continue
             end
 
-            # Determine which pixels to use from the aperture in the fit
-            window = Int(round(ybottom)):Int(ceil(ytop - 0.5))
+            # Pixel fractions
+            fracs, ki, kf = get_pixel_fracs(profile[:, x], yc[x], yrange)
+            if ki < 1 || kf > ny
+                continue
+            end
+            window = ki:kf
+            P = profile[window, x]
+            PP = @views fracs[window] .* P
+            P ./= sum(P)
+            PP ./= sum(PP)
 
             # Mask for this window
             M = zeros(length(window))
@@ -327,24 +359,19 @@ function optimal_extraction(
                 continue
             end
 
-            # Shift trace profile and normalize
-            P = profile[window, x]
-            if any(.~isfinite.(P) .|| P .< 0)
-                continue
-            end
-            P ./= sum(P)
-
             # Data
             if !isnothing(background)
                 S = image[window, x] .- background[x]
             else
                 S = image[window, x]
             end
+            SS = @views fracs[window] .* S
 
             # Flag negative flux
             bad = findall(S .<= 0)
             M[bad] .= 0
             S[bad] .= NaN
+            SS[bad] .= NaN
 
             # Check if column is worth extracting again
             if sum(M) <= 1
@@ -352,7 +379,7 @@ function optimal_extraction(
             end
 
             # Variance
-            v = i == 1 ? copy(S) : spec1d[x] .* P
+            v = i == 1 ? copy(SS) : spec1d[x] .* P ./ fracs[window]
             v .+= !isnothing(background) ? background[x] .+ background_err[x]^2 : 0
             v .+= read_noise^2
 
@@ -360,16 +387,40 @@ function optimal_extraction(
             w = M ./ v
 
             # Least squares
-            spec1d[x] = nansum(w .* S .* P) / nansum(w .* P.^2)
+            spec1d[x] = nansum(w .* SS .* PP) / nansum(w .* PP.^2)
 
             # Horne variance
-            specerr1d[x] = sqrt(nansum(M .* P) / nansum(w .* P.^2))
+            specerr1d[x] = sqrt(nansum(M .* PP) / nansum(w .* PP.^2))
         
         end
 
     end
 
     return spec1d, specerr1d
+end
+
+
+function get_pixel_fracs(P, yc::Real, yrange)
+    fracs = zeros(length(P))
+    yi, yf = yrange .+ yc
+    if 0 < yi - floor(yi) < 0.5
+        ki = Int(floor(yi))
+        fi = 0.5 - yi + floor(yi)
+    elseif 0.5 <= yi - floor(yi) < 1
+        ki = Int(ceil(yi))
+        fi = 0.5 + ceil(yi) - yi
+    end
+    if 0 < ceil(yf) - yf < 0.5
+        kf = Int(ceil(yf))
+        ff = 0.5 + ceil(yf) - yf
+    elseif 0.5 <= ceil(yf) - yf < 1
+        kf = Int(floor(yf))
+        ff = 0.5 + yf - floor(yf)
+    end
+    fracs[ki] = fi
+    fracs[ki+1:kf-1] .= 1
+    fracs[kf] = ff
+    return fracs, ki, kf
 end
 
 
@@ -571,4 +622,12 @@ function get_knots(
     end
     knots_y = collect(range(minimum(y) + pad, step=knot_spacing_y, stop=maximum(y) - pad))
     return knots_x, knots_y
+end
+
+function estimate_background(image::Matrix{<:Real})
+    image_smooth = quantile_filter(image, window=(3, 3))
+    background = nanminimum(image_smooth, dim=1)
+    background = quantile_filter(background, window=5)
+    background_err = sqrt.(background)
+    return background, background_err
 end
